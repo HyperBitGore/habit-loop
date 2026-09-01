@@ -1,0 +1,26 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "go: build server",
+      "type": "shell",
+      "command": "go",
+      "args": [
+        "build",
+        "-o",
+        "${workspaceFolder}/server/bin/server",
+        "."
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/server"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$go"
+      ]
+    }
+  ]
+}
