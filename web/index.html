@@ -10,13 +10,28 @@
   <body>
     <h1>Habits</h1>
     <button id="add-todo" type="button">Add Todo</button>
+    <ul id="todo-list" aria-live="polite"></ul>
     <div id="todo-popup" class="todo-popup-overlay" hidden>
       <section class="todo-popup" role="dialog" aria-modal="true" aria-labelledby="todo-popup-title">
         <button id="todo-close">Close</button>
         <h2 id="todo-popup-title">Add Todo</h2>
+        <label for="todo-select">Existing TODO</label>
+        <select id="todo-select">
+          <option value="">Select a TODO</option>
+        </select>
         <label for="todo-title">TODO Name</label>
         <input id="todo-title" type="text" />
-        <button type="button">Save</button>
+        <button type="button" id="todo-save">Save</button>
+      </section>
+    </div>
+    <div id="todo-detail-popup" class="todo-popup-overlay" hidden>
+      <section class="todo-popup" role="dialog" aria-modal="true" aria-labelledby="todo-detail-title">
+        <button id="todo-detail-close">Close</button>
+        <h2 id="todo-detail-title">Todo Details</h2>
+        <p>Name: <span id="todo-detail-name"></span></p>
+        <p>Date: <span id="todo-detail-date"></span></p>
+        <p>Complete: <span id="todo-detail-complete"></span></p>
+        <button type="button" id="todo-detail-delete">Delete</button>
       </section>
     </div>
   </body>
