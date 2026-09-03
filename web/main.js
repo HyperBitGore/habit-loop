@@ -1,4 +1,7 @@
-import { todoOpen, todoClose, fetchTodos, addTodo, todoDetailClose, deleteSelectedTodo } from "./todos.js";
+import { todoOpen, todoClose, fetchTodos, addTodo, todoDetailClose, deleteSelectedTodo, newTodo, editTodo, currentTodoID } from "./todos.js";
+
+// TODO
+//  - fix the index to edit the todo being wrong
 
 let currentTodoName = "";
 let currentDate = formatDateForServer(new Date());
@@ -15,7 +18,7 @@ fetchTodos(currentDate.slice(0, 10));
 
 const todoOpenButton = document.querySelector("#add-todo");
 
-todoOpenButton.addEventListener("click", todoOpen);
+todoOpenButton.addEventListener("click", () => { todoOpen(); newTodo = true; currentTodoID = -1; });
 
 const todoCloseButton = document.querySelector("#todo-close");
 todoCloseButton.addEventListener("click", todoClose);
@@ -42,7 +45,12 @@ todoDetailDeleteButton.addEventListener("click", async () => {
 
 const todoSaveButton = document.querySelector("#todo-save");
 todoSaveButton.addEventListener("click", async () => {
-    await addTodo(currentTodoName, currentDate, currentComplete);
+    if (newTodo) {
+        await addTodo(currentTodoName, currentDate, currentComplete);
+    } else {
+        console.log("editing todo");
+        await editTodo(currentTodoID, currentTodoName, currentDate, currentTodoID);
+    }
     await fetchTodos(currentDate.slice(0, 10));
     todoClose();
     currentTodoName = "";

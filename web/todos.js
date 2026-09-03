@@ -1,4 +1,6 @@
 let todoArray = [];
+export let newTodo = true;
+export let currentTodoID = -1;
 
 export function todoOpen () {
     showTodo(false);
@@ -13,21 +15,18 @@ export function showTodo (hide) {
     popup.hidden = hide;
 }
 
-function storeTodo (name, date, complete) {
-    todoArray.push({ name, date, complete});
-}
-
 function renderTodos (todos) {
     const todoList = document.querySelector("#todo-list");
     const todoSelect = document.querySelector("#todo-select");
     todoList.replaceChildren();
     todoSelect.replaceChildren(new Option("Select a TODO", ""));
-
+    todoArray = todos;
+    console.log(todoArray);
     for (const todo of todos) {
         const listItem = document.createElement("li");
         const option = new Option(todo.name, todo.name);
         listItem.textContent = todo.complete ? `${todo.name} (complete)` : todo.name;
-        listItem.addEventListener("click", () => openTodoDetail(todo));
+        listItem.addEventListener("click", () => { openTodoDetail(todo); newTodo = false; currentTodoID = todo.id; });
         todoList.appendChild(listItem);
         todoSelect.appendChild(option);
     }
@@ -62,9 +61,7 @@ export async function deleteSelectedTodo () {
         const result = await fetch("http://localhost:8081/api/remove_task", {
             method: "PUT",
             headers: {
-                "X-Task-Name": todo.name,
-                "X-Task-Date": formatServerDate(todo.date),
-                "X-Task-Complete": String(todo.complete)
+                "X-Task-ID": String(todo.id)
             }
         })
         if (!result.ok) {
@@ -111,8 +108,33 @@ export async function addTodo (name, time, complete) {
         if (!result.ok) {
             throw new Error(`HTTP error! Status: ${result.status}`);
         }
-        storeTodo(todo.name, todo.time, todo.complete);
     } catch (error) {
         console.error('Error updating resource:', error);
+    }
+}
+
+export async function editTodo (todo_id, todo_name, todo_date, todo_complete) {
+    const todo = todoArray.find((e) => {
+        return e.id == todo_id;
+    })
+    if (todo == undefined) {
+        return;
+    }
+    console.log(todo);
+    try {
+        const result = await fetch("http://localhost:8081/api/update_task", {
+            method: "PUT",
+            headers: {
+                "X-Task-Name": todo_name,
+                "X-Task-Date": todo_date,
+                "X-Task-Complete": String(todo_complete),
+                "X-Task-ID": String(todo.id)
+            }
+        });
+        if (!result.ok) {
+            throw new Error(`HTTP error! Status: ${result.status}`);
+        }
+    } catch (error) {
+        console.error("Error updating resource: ", error);
     }
 }

@@ -29,6 +29,7 @@ func main() {
 	mux.Handle("/", http.FileServer(http.Dir("../web")))
 	mux.HandleFunc("/api/add_task", HandleAddTask)
 	mux.HandleFunc("/api/remove_task", HandleRemoveTask)
+	mux.HandleFunc("/api/update_task", HandleUpdateTask)
 	log.Println("Server listening on http://localhost:8081")
 	log.Fatal(http.ListenAndServe(":8081", mux))
 }
