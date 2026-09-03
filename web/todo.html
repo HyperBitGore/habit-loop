@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Habit Loop</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./main.js"></script>
+  </head>
+  <body>
+    <h1>Habits</h1>
+    <button id="add-todo" type="button">Add Todo</button>
+    <ul id="todo-list" aria-live="polite"></ul>
+
+    <div id="todo-popup" class="todo-popup-overlay" hidden>
+      <section class="todo-popup" role="dialog" aria-modal="true" aria-labelledby="todo-popup-title">
+        <button id="todo-close" type="button">Close</button>
+        <h2 id="todo-popup-title">Add Todo</h2>
+        <label for="todo-title">TODO Name</label>
+        <input id="todo-title" type="text" />
+        <button type="button" id="todo-save">Save</button>
+      </section>
+    </div>
+
+    <div id="todo-detail-popup" class="todo-popup-overlay" hidden>
+      <section class="todo-popup" role="dialog" aria-modal="true" aria-labelledby="todo-detail-title">
+        <button id="todo-detail-close" type="button">Close</button>
+        <h2 id="todo-detail-title">Edit Todo</h2>
+        <label for="todo-detail-name">TODO Name</label>
+        <input id="todo-detail-name" type="text" />
+        <p>Date: <span id="todo-detail-date"></span></p>
+        <p>Complete: <span id="todo-detail-complete"></span></p>
+        <button type="button" id="todo-detail-save">Save</button>
+        <button type="button" id="todo-detail-delete">Delete</button>
+      </section>
+    </div>
+  </body>
+</html>

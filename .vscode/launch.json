@@ -8,6 +8,7 @@
       "mode": "debug",
       "program": "${workspaceFolder}/server",
       "cwd": "${workspaceFolder}/server",
+      "console": "integratedTerminal",
       "preLaunchTask": "go: build server"
     }
   ]

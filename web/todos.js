@@ -1,6 +1,4 @@
 let todoArray = [];
-export let newTodo = true;
-export let currentTodoID = -1;
 
 export function todoOpen () {
     showTodo(false);
@@ -17,18 +15,27 @@ export function showTodo (hide) {
 
 function renderTodos (todos) {
     const todoList = document.querySelector("#todo-list");
-    const todoSelect = document.querySelector("#todo-select");
     todoList.replaceChildren();
-    todoSelect.replaceChildren(new Option("Select a TODO", ""));
     todoArray = todos;
-    console.log(todoArray);
     for (const todo of todos) {
         const listItem = document.createElement("li");
-        const option = new Option(todo.name, todo.name);
-        listItem.textContent = todo.complete ? `${todo.name} (complete)` : todo.name;
-        listItem.addEventListener("click", () => { openTodoDetail(todo); newTodo = false; currentTodoID = todo.id; });
+        const todoName = document.createElement("span");
+        todoName.textContent = todo.name;
+        const completeButton = document.createElement("button");
+        completeButton.type = "button";
+        completeButton.textContent = todo.complete ? "✓" : "X";
+        completeButton.setAttribute(
+            "aria-label",
+            todo.complete ? `Mark ${todo.name} incomplete` : `Mark ${todo.name} complete`
+        );
+        completeButton.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            await toggleTodoComplete(todo);
+            await fetchTodos(formatLocalDate(new Date()));
+        });
+        listItem.addEventListener("click", () => openTodoDetail(todo));
+        listItem.append(todoName, completeButton);
         todoList.appendChild(listItem);
-        todoSelect.appendChild(option);
     }
 }
 
@@ -36,7 +43,7 @@ let detailTodo = null;
 
 function openTodoDetail (todo) {
     detailTodo = todo;
-    document.querySelector("#todo-detail-name").textContent = todo.name;
+    document.querySelector("#todo-detail-name").value = todo.name;
     document.querySelector("#todo-detail-date").textContent = formatServerDate(todo.date);
     document.querySelector("#todo-detail-complete").textContent = todo.complete ? "Yes" : "No";
     document.querySelector("#todo-detail-popup").hidden = false;
@@ -52,10 +59,29 @@ function formatServerDate (date) {
     return date.slice(0, 19).replace("T", " ");
 }
 
+function formatLocalDate (date) {
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export async function saveSelectedTodo (name) {
+    if (!detailTodo) {
+        return;
+    }
+    const todo = detailTodo;
+    await editTodo(todo.id, name, todo.date, todo.complete);
+    todoDetailClose();
+}
+
+export async function toggleTodoComplete (todo) {
+    await editTodo(todo.id, todo.name, todo.date, !todo.complete);
+}
+
 export async function deleteSelectedTodo () {
     if (!detailTodo) {
         return;
     }
+
     const todo = detailTodo;
     try {
         const result = await fetch("http://localhost:8081/api/remove_task", {

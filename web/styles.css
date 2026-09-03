@@ -1,5 +1,109 @@
+* {
+  box-sizing: border-box;
+}
+
 body {
-  font-family: sans-serif;
+  min-height: 100vh;
+  margin: 0;
+  padding: 3rem 1.25rem;
+  color: #172033;
+  background: #eef1f5;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body > h1,
+body > #add-todo,
+body > #todo-list {
+  width: min(100%, 40rem);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+h1 {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: #101828;
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  letter-spacing: -0.04em;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 1px solid #c7ced9;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.9rem;
+  color: #25324a;
+  background: #ffffff;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+button:hover {
+  border-color: #526581;
+  background: #f7f9fb;
+}
+
+button:focus-visible,
+input:focus-visible,
+li:focus-visible {
+  outline: 3px solid #9bbcff;
+  outline-offset: 2px;
+}
+
+#add-todo {
+  display: block;
+  margin-bottom: 1rem;
+  border-color: #263b63;
+  color: #ffffff;
+  background: #263b63;
+  font-weight: 650;
+}
+
+#add-todo:hover {
+  border-color: #1d2e4e;
+  background: #1d2e4e;
+}
+
+#todo-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#todo-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 3.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #d8dee8;
+  border-radius: 0.65rem;
+  background: #ffffff;
+  box-shadow: 0 0.25rem 0.75rem rgb(30 45 70 / 6%);
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+#todo-list li:hover {
+  border-color: #aab6c8;
+  box-shadow: 0 0.45rem 1rem rgb(30 45 70 / 10%);
+  transform: translateY(-1px);
+}
+
+#todo-list li button {
+  flex: 0 0 auto;
+  min-width: 3rem;
+  padding: 0.35rem 0.55rem;
+  color: #526581;
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .todo-popup-overlay[hidden] {
@@ -21,5 +125,101 @@ body {
   padding: 1.5rem;
   border-radius: 0.5rem;
   background: white;
-  box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 25%);
+  box-shadow: 0 1rem 2.5rem rgb(16 24 40 / 20%);
+}
+
+.todo-popup h2 {
+  margin: 0 0 0.35rem;
+  color: #101828;
+  letter-spacing: -0.02em;
+}
+
+.todo-popup label {
+  color: #526581;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.todo-popup input {
+  width: 100%;
+  border: 1px solid #c7ced9;
+  border-radius: 0.5rem;
+  padding: 0.7rem 0.8rem;
+  color: #172033;
+  background: #ffffff;
+}
+
+.todo-popup p {
+  margin: 0;
+  color: #526581;
+}
+
+.auth-page {
+  display: grid;
+  min-height: calc(100vh - 6rem);
+  place-items: center;
+}
+
+.auth-card {
+  display: grid;
+  gap: 0.75rem;
+  width: min(100%, 24rem);
+  padding: 2rem;
+  border: 1px solid #d8dee8;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 1rem 2.5rem rgb(30 45 70 / 10%);
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #526581;
+  font-size: 0.8rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.auth-intro {
+  margin: -0.25rem 0 0.75rem;
+  color: #526581;
+}
+
+.auth-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 0.9rem;
+}
+
+.auth-card label {
+  color: #526581;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.auth-card input {
+  width: 100%;
+  border: 1px solid #c7ced9;
+  border-radius: 0.5rem;
+  padding: 0.7rem 0.8rem;
+  color: #172033;
+  background: #ffffff;
+}
+
+.auth-card button {
+  margin-top: 0.5rem;
+  border-color: #263b63;
+  color: #ffffff;
+  background: #263b63;
+  font-weight: 650;
+}
+
+.auth-card button:hover {
+  border-color: #1d2e4e;
+  background: #1d2e4e;
 }
