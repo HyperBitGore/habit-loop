@@ -3,9 +3,15 @@ package main
 // recieve api requests and send to other api file functions
 
 // TODO
+//	- add auth middleware
 //	- add seperate users
 //	- add task data saving
 //	- add repeating tasks
+//  - Session creation and validation.
+//  - Authentication middleware on every task route.
+//  - Admin middleware on account-management routes.
+//	- Concurrency protection around shared  tasks  state.
+//	- Explicit validation and error responses.
 
 import (
 	"bufio"
@@ -13,7 +19,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-
 	"golang.org/x/term"
 )
 
@@ -23,8 +28,6 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-
-	initTasks()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/get_tasks", handleGetTodos)
 	mux.Handle("/", http.FileServer(http.Dir("../web")))
