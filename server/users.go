@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
+
 	"golang.org/x/crypto/bcrypt"
 )
 type UserSession struct {
@@ -22,6 +24,7 @@ const usersDir = "users"
 const sessionTimeMinutes = 30
 var user_sessions = map[int]UserSession{}
 var token_map = map[uint64]int{}
+var sessionMu sync.Mutex
 
 type User struct {
 	Name       string `json:"name"`
@@ -100,29 +103,64 @@ func AddUser(name string, password string) error {
 }
 
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
-	log.Println("Recieved a todo list request")
-	if r.Method != http.MethodGet {
+	log.Println("Recieved a login request")
+	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	name := r.Header.Get("X-User-Name")
-	password := r.Header.Get("X-User-Password")
-	user := getUser(name)
+	defer r.Body.Close()
+	var creds struct {
+		Name     string `json:"name"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+		http.Error(w, "Invalid request body", http.StatusUnauthorized)
+		return
+	}
+	user := getUser(creds.Name)
 	log.Println("user, ", user)
-	err := bcrypt.CompareHashAndPassword(user.Password, []byte(password)) 
+	err := bcrypt.CompareHashAndPassword(user.Password, []byte(creds.Password))
 	if err == nil {
 		token := GetUserSessionCookie(&user)
-		token_cookie := http.Cookie{ Name: "auth", Value: strconv.FormatUint(token, 10), HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode }
+		token_cookie := http.Cookie{ Name: "auth", Value: strconv.FormatUint(token, 10), HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode, Path: "/", MaxAge: sessionTimeMinutes * 60 }
 		http.SetCookie(w, &token_cookie)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 		return
 	}
-	w.WriteHeader(http.StatusBadRequest)
+	w.WriteHeader(http.StatusUnauthorized)
 	json.NewEncoder(w).Encode(map[string]string{
 		"error": "invalid input",
 	})
 }
+
+func HandleLogout (w http.ResponseWriter, r *http.Request) {
+	log.Println("Recieved a logout request")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	cookie, err := r.Cookie("auth")
+	if (err != nil || cookie.Value == "") {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	token_cookie := http.Cookie{ Name: "auth", Value: "", HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode, Path: "/", MaxAge: -1 }
+	http.SetCookie(w, &token_cookie)
+
+	token, err := strconv.ParseUint(cookie.Value, 10, 64)
+	if err == nil {
+		sessionMu.Lock()
+		if userID, ok := token_map[token]; ok {
+			delete(token_map, token)
+			delete(user_sessions, userID)
+		}
+		sessionMu.Unlock()
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+}
+
 
 func HandleRegisterUser(w http.ResponseWriter, r *http.Request) {
 	log.Println("Recieved a todo list request")
@@ -143,25 +181,40 @@ func new_token () uint64 {
 	return token
 }
 
-func CheckUserSessionToken (user *User) bool {
+// caller must hold sessionMu
+func checkUserSessionTokenLocked(user *User) bool {
 	session, ok := user_sessions[user.ID]
-	now := time.Now()
-	if ok && now.Before(session.Expiration) {
-		return true
-	} 
-	if now.After(session.Expiration) {
-		delete(token_map, session.Token)
-		delete(user_sessions, user.ID)
+	if !ok {
+		return false
 	}
+	now := time.Now()
+	if now.Before(session.Expiration) {
+		return true
+	}
+	delete(token_map, session.Token)
+	delete(user_sessions, user.ID)
 	return false
 }
 
+func CheckUserSessionToken (user *User) bool {
+	sessionMu.Lock()
+	defer sessionMu.Unlock()
+	return checkUserSessionTokenLocked(user)
+}
+
 func CheckSessionToken (token uint64) bool {
+	sessionMu.Lock()
+	defer sessionMu.Unlock()
 	t, ok := token_map[token]
 	if ok {
-		session := user_sessions[t]
+		session, ok := user_sessions[t]
+		if !ok {
+			return false
+		}
 		now := time.Now()
 		if now.After(session.Expiration) {
+			delete(token_map, session.Token)
+			delete(user_sessions, t)
 			return false
 		}
 		return true
@@ -171,7 +224,9 @@ func CheckSessionToken (token uint64) bool {
 
 // just not gonna worry abt collisions such a low chance
 func GetUserSessionCookie (user *User) uint64 {
-	if (CheckUserSessionToken(user)) {
+	sessionMu.Lock()
+	defer sessionMu.Unlock()
+	if checkUserSessionTokenLocked(user) {
 		return user_sessions[user.ID].Token
 	}
 	now := time.Now()

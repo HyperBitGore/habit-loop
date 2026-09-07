@@ -30,7 +30,6 @@ func authMiddleware (next http.Handler) http.Handler {
 			return
 		}
 		token, err := strconv.ParseUint(cookie.Value, 10, 64)
-		log.Println("Token: ", token)
 		if err != nil || !CheckSessionToken(token) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -63,6 +62,7 @@ func main() {
 		http.HandlerFunc(HandleUpdateTask),
 	))
 	mux.HandleFunc("/api/login", HandleLogin)
+	mux.HandleFunc("/api/logout", HandleLogout)
 	log.Println("Server listening on http://localhost:8081")
 	log.Fatal(http.ListenAndServe(":8081", mux))
 }

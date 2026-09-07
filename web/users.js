@@ -1,5 +1,4 @@
 const loginForm = document.querySelector("#login-form");
-let auth_token = 0
 
 if (loginForm) {
     loginForm.addEventListener("submit", async (event) => {
@@ -21,14 +20,24 @@ if (loginForm) {
 
 export async function login (username, password) {
     const response = await fetch("/api/login", {
-        method: "GET",
+        method: "POST",
         headers: {
-            "X-User-Name": username,
-            "X-User-Password": password
-        }
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            name: username,
+            password: password
+        })
     });
 
     if (!response.ok) {
         throw new Error("Invalid login credentials.");
+    }
+}
+export async function logout () {
+    try {
+        await fetch("/api/logout", { method: "POST" });
+    } finally {
+        window.location.assign("./login.html");
     }
 }

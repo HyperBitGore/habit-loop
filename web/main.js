@@ -1,4 +1,5 @@
 import { todoOpen, todoClose, fetchTodos, addTodo, todoDetailClose, deleteSelectedTodo, saveSelectedTodo } from "./todos.js";
+import { logout } from "./users.js";
 
 let currentTodoName = "";
 let currentDate = formatDateForServer(new Date());
@@ -14,6 +15,9 @@ function formatDateForServer(date) {
 fetchTodos(currentDate.slice(0, 10));
 
 const todoOpenButton = document.querySelector("#add-todo");
+
+const logoutButton = document.querySelector("#logout");
+logoutButton.addEventListener("click", logout);
 
 todoOpenButton.addEventListener("click", () => {
     currentTodoName = "";
