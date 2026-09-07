@@ -1,5 +1,5 @@
-
 const loginForm = document.querySelector("#login-form");
+let auth_token = 0
 
 if (loginForm) {
     loginForm.addEventListener("submit", async (event) => {
