@@ -1,17 +1,27 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
-
+	"strconv"
+	"time"
 	"golang.org/x/crypto/bcrypt"
 )
+type UserSession struct {
+	Token uint64 `json:"token"`
+	Expiration time.Time `json:"expiration"`
+}
 
 const usersDir = "users"
+const sessionTimeMinutes = 30
+var user_sessions = map[int]UserSession{}
+var token_map = map[uint64]int{}
 
 type User struct {
 	Name       string `json:"name"`
@@ -101,6 +111,9 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	log.Println("user, ", user)
 	err := bcrypt.CompareHashAndPassword(user.Password, []byte(password)) 
 	if err == nil {
+		token := GetUserSessionCookie(&user)
+		token_cookie := http.Cookie{ Name: "auth", Value: strconv.FormatUint(token, 10), HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode }
+		http.SetCookie(w, &token_cookie)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 		return
@@ -118,4 +131,53 @@ func HandleRegisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+func new_token () uint64 {
+	b := make([]byte, 8)
+	_, err := rand.Read(b)
+	if err != nil {
+		panic(err)
+	}
+	token := binary.BigEndian.Uint64(b)
+	return token
+}
+
+func CheckUserSessionToken (user *User) bool {
+	session, ok := user_sessions[user.ID]
+	now := time.Now()
+	if ok && now.Before(session.Expiration) {
+		return true
+	} 
+	if now.After(session.Expiration) {
+		delete(token_map, session.Token)
+		delete(user_sessions, user.ID)
+	}
+	return false
+}
+
+func CheckSessionToken (token uint64) bool {
+	t, ok := token_map[token]
+	if ok {
+		session := user_sessions[t]
+		now := time.Now()
+		if now.After(session.Expiration) {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+// just not gonna worry abt collisions such a low chance
+func GetUserSessionCookie (user *User) uint64 {
+	if (CheckUserSessionToken(user)) {
+		return user_sessions[user.ID].Token
+	}
+	now := time.Now()
+	token := new_token()
+	expire := now.Add(sessionTimeMinutes * time.Minute)
+	user_sessions[user.ID] = UserSession{ Token: token, Expiration: expire}
+	token_map[token] = user.ID
+	return token
 }

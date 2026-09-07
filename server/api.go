@@ -3,7 +3,6 @@ package main
 // recieve api requests and send to other api file functions
 
 // TODO
-//	- add auth middleware
 //	- add seperate users
 //	- add task data saving
 //	- add repeating tasks
@@ -19,8 +18,27 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"golang.org/x/term"
 )
+
+func authMiddleware (next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("auth")
+		if (err != nil || cookie.Value == "") {
+			    http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		token, err := strconv.ParseUint(cookie.Value, 10, 64)
+		log.Println("Token: ", token)
+		if err != nil || !CheckSessionToken(token) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 
 func main() {
 	if !fileExists(userPath("admin")) {
@@ -29,11 +47,21 @@ func main() {
 		}
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/get_tasks", handleGetTodos)
+	mux.Handle("/api/get_tasks", authMiddleware(
+    	http.HandlerFunc(handleGetTodos),
+	))
 	mux.Handle("/", http.FileServer(http.Dir("../web")))
-	mux.HandleFunc("/api/add_task", HandleAddTask)
-	mux.HandleFunc("/api/remove_task", HandleRemoveTask)
-	mux.HandleFunc("/api/update_task", HandleUpdateTask)
+	mux.Handle("/api/add_task", authMiddleware(
+    	http.HandlerFunc(HandleAddTask),
+	))
+
+	mux.Handle("/api/remove_task", authMiddleware(
+		http.HandlerFunc(HandleRemoveTask),
+	))
+
+	mux.Handle("/api/update_task", authMiddleware(
+		http.HandlerFunc(HandleUpdateTask),
+	))
 	mux.HandleFunc("/api/login", HandleLogin)
 	log.Println("Server listening on http://localhost:8081")
 	log.Fatal(http.ListenAndServe(":8081", mux))
