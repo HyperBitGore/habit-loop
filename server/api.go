@@ -4,6 +4,13 @@ package main
 
 // TODO
 //	- switch to sqlite3
+//		- users indexed by name since we only allow unique names (drop id)
+//		- remove mutexing on user data access?
+//	- allow user registration
+//		- use emails?
+//	- write tests
+//	- implement security fixes
+//	- cloudflare turnstile
 
 import (
 	"bufio"
