@@ -1,5 +1,12 @@
 import { todoOpen, todoClose, fetchTodos, addTodo, todoDetailClose, deleteSelectedTodo, saveSelectedTodo } from "./todos.js";
-import { getCurrentUser, logout, registerUser } from "./users.js";
+import {
+    editUser,
+    getCurrentUser,
+    getUsers,
+    logout,
+    registerUser,
+    setPassword
+} from "./users.js";
 import {
     addHabit,
     changeHabitCalendarMonth,
@@ -45,9 +52,63 @@ const habitCalendarPreviousButton = document.querySelector("#habit-calendar-prev
 const habitCalendarNextButton = document.querySelector("#habit-calendar-next");
 const taskDateInput = document.querySelector("#task-date");
 const createUserButton = document.querySelector("#create-user");
+const manageUsersButton = document.querySelector("#manage-users");
 const userPopup = document.querySelector("#user-popup");
 const userCloseButton = document.querySelector("#user-close");
 const userForm = document.querySelector("#user-form");
+const userListPopup = document.querySelector("#user-list-popup");
+const userListCloseButton = document.querySelector("#user-list-close");
+const userList = document.querySelector("#user-list");
+const userListError = document.querySelector("#user-list-error");
+const changePasswordButton = document.querySelector("#change-password");
+const passwordPopup = document.querySelector("#password-popup");
+const passwordCloseButton = document.querySelector("#password-close");
+const passwordForm = document.querySelector("#password-form");
+const passwordMessage = document.querySelector("#password-message");
+
+async function renderUsers () {
+    const users = await getUsers();
+    userList.replaceChildren();
+    for (const user of users) {
+        const form = document.createElement("form");
+        form.className = "user-list-row";
+
+        const nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.value = user.name;
+        nameInput.setAttribute("aria-label", `Username for ${user.name}`);
+        nameInput.required = true;
+
+        const roleSelect = document.createElement("select");
+        roleSelect.setAttribute("aria-label", `Role for ${user.name}`);
+        for (const role of ["user", "admin"]) {
+            const option = document.createElement("option");
+            option.value = role;
+            option.textContent = role === "admin" ? "Admin" : "User";
+            option.selected = user.role === role;
+            roleSelect.appendChild(option);
+        }
+
+        const saveButton = document.createElement("button");
+        saveButton.type = "submit";
+        saveButton.textContent = "Save";
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            userListError.hidden = true;
+            try {
+                await editUser(user.id, nameInput.value, roleSelect.value);
+                await renderUsers();
+            } catch (error) {
+                userListError.textContent = error.message;
+                userListError.hidden = false;
+            }
+        });
+
+        form.append(nameInput, roleSelect, saveButton);
+        userList.appendChild(form);
+    }
+}
 
 taskDateInput.value = localDateString();
 fetchTodos(taskDateInput.value);
@@ -122,6 +183,7 @@ getCurrentUser()
     .then((user) => {
         if (user.role === "admin") {
             createUserButton.hidden = false;
+            manageUsersButton.hidden = false;
         }
     })
     .catch((error) => {
@@ -131,6 +193,57 @@ getCurrentUser()
 createUserButton.addEventListener("click", () => {
     userForm.reset();
     userPopup.hidden = false;
+});
+
+manageUsersButton.addEventListener("click", async () => {
+    userListError.hidden = true;
+    try {
+        await renderUsers();
+        userListPopup.hidden = false;
+    } catch (error) {
+        userListError.textContent = error.message;
+        userListError.hidden = false;
+        userListPopup.hidden = false;
+    }
+});
+
+userListCloseButton.addEventListener("click", () => {
+    userListPopup.hidden = true;
+});
+
+changePasswordButton.addEventListener("click", () => {
+    passwordForm.reset();
+    passwordMessage.classList.remove("is-success");
+    passwordMessage.hidden = true;
+    passwordPopup.hidden = false;
+});
+
+passwordCloseButton.addEventListener("click", () => {
+    passwordPopup.hidden = true;
+});
+
+passwordForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(passwordForm);
+    const newPassword = formData.get("newPassword");
+    passwordMessage.hidden = true;
+    if (newPassword !== formData.get("confirmPassword")) {
+        passwordMessage.classList.remove("is-success");
+        passwordMessage.textContent = "New passwords do not match.";
+        passwordMessage.hidden = false;
+        return;
+    }
+    try {
+        await setPassword(formData.get("currentPassword"), newPassword);
+        passwordMessage.textContent = "Password updated.";
+        passwordMessage.classList.add("is-success");
+        passwordMessage.hidden = false;
+        passwordForm.reset();
+    } catch (error) {
+        passwordMessage.classList.remove("is-success");
+        passwordMessage.textContent = error.message;
+        passwordMessage.hidden = false;
+    }
 });
 
 userCloseButton.addEventListener("click", () => {

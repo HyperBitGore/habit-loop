@@ -3,7 +3,6 @@ package main
 // recieve api requests and send to other api file functions
 
 // TODO
-//  - Admin middleware on account-management routes.
 //	- Concurrency protection around shared tasks state.
 //	- switch to sqlite3
 
@@ -31,6 +30,20 @@ func authMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func adminMiddleware(next http.Handler) http.Handler {
+	return authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user := requestUser(w, r)
+		if user == nil {
+			return
+		}
+		if user.Role != "admin" {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	}))
 }
 
 func main() {
@@ -61,8 +74,17 @@ func main() {
 	))
 	mux.HandleFunc("/api/login", HandleLogin)
 	mux.HandleFunc("/api/logout", HandleLogout)
-	mux.Handle("/api/register_user", authMiddleware(
+	mux.Handle("/api/register_user", adminMiddleware(
 		http.HandlerFunc(HandleRegisterUser),
+	))
+	mux.Handle("/api/get_users", adminMiddleware(
+		http.HandlerFunc(HandleGetUsers),
+	))
+	mux.Handle("/api/edit_user", adminMiddleware(
+		http.HandlerFunc(HandleEditUser),
+	))
+	mux.Handle("/api/set_password", authMiddleware(
+		http.HandlerFunc(HandleSetPassword),
 	))
 	mux.Handle("/api/current_user", authMiddleware(
 		http.HandlerFunc(HandleCurrentUser),

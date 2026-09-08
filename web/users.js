@@ -67,3 +67,40 @@ export async function getCurrentUser () {
     }
     return response.json();
 }
+
+export async function getUsers () {
+    const response = await fetch("/api/get_users");
+    if (!response.ok) {
+        throw new Error("Unable to load users.");
+    }
+    return response.json();
+}
+
+export async function editUser (id, name, role) {
+    const response = await fetch("/api/edit_user", {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ id, name, role })
+    });
+    if (!response.ok) {
+        throw new Error("Unable to update user.");
+    }
+}
+
+export async function setPassword (currentPassword, newPassword) {
+    const response = await fetch("/api/set_password", {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            current_password: currentPassword,
+            new_password: newPassword
+        })
+    });
+    if (!response.ok) {
+        throw new Error(await response.text() || "Unable to update password.");
+    }
+}

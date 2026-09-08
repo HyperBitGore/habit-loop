@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -149,6 +151,70 @@ func AddUser(name string, password string, role string) error {
 	return WriteUsers(user_map)
 }
 
+func DeleteUser(name string, id int) error {
+	if UserExists(name) {
+		delete(id_map, name)
+		delete(user_map, id)
+		if err := WriteUsers(user_map); err != nil {
+			return fmt.Errorf("failed to save edited user: %w", err)
+		}
+		return nil
+	}
+	return fmt.Errorf("User doesn't exist! %v", name)
+}
+
+func EditUser(name string, id int, role string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("username is required")
+	}
+	if role != "user" && role != "admin" {
+		return fmt.Errorf("invalid role %q", role)
+	}
+	user, ok := user_map[id]
+	if !ok {
+		return fmt.Errorf("user with ID %d doesn't exist", id)
+	}
+
+	if existingID, exists := id_map[name]; exists && existingID != id {
+		return fmt.Errorf("username %q is already taken", name)
+	}
+
+	oldName := user.Name
+	user.Name = name
+	user.Role = role
+
+	if oldName != name {
+		delete(id_map, oldName)
+	}
+	id_map[name] = id
+	user_map[id] = user
+
+	if err := WriteUsers(user_map); err != nil {
+		return fmt.Errorf("failed to save edited user: %w", err)
+	}
+	return nil
+}
+
+func SetUserPassword(user *User, currentPassword string, newPassword string) error {
+	if newPassword == "" {
+		return fmt.Errorf("new password is required")
+	}
+	if err := bcrypt.CompareHashAndPassword(user.Password, []byte(currentPassword)); err != nil {
+		return fmt.Errorf("current password is incorrect")
+	}
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to generate password hash: %w", err)
+	}
+	user.Password = passwordHash
+	user_map[user.ID] = *user
+	if err := WriteUsers(user_map); err != nil {
+		return fmt.Errorf("failed to save password: %w", err)
+	}
+	return nil
+}
+
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	log.Println("Recieved a login request")
 	if r.Method != http.MethodPost {
@@ -214,14 +280,6 @@ func HandleRegisterUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	user := requestUser(w, r)
-	if user == nil {
-		return
-	}
-	if user.Role != "admin" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
 	defer r.Body.Close()
 	var creds struct {
 		Name     string `json:"name"`
@@ -232,12 +290,117 @@ func HandleRegisterUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusUnauthorized)
 		return
 	}
+	// check if user name exists already
+	_, ok := id_map[creds.Name]
+	if ok {
+		http.Error(w, "Invalid request body, name already taken!", http.StatusUnauthorized)
+		return
+	}
 	if AddUser(creds.Name, creds.Password, creds.Role) == nil {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 		return
 	}
 	http.Error(w, "Invalid request body", http.StatusBadRequest)
+}
+
+func HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	log.Println("Recieved a todo list request")
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	defer r.Body.Close()
+	var creds struct {
+		Name string `json:"name"`
+		ID   int    `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+		http.Error(w, "Invalid request body", http.StatusUnauthorized)
+		return
+	}
+	if DeleteUser(creds.Name, creds.ID) == nil {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+		return
+	}
+	http.Error(w, "Invalid request body", http.StatusBadRequest)
+}
+
+func HandleEditUser(w http.ResponseWriter, r *http.Request) {
+	log.Println("Recieved a todo list request")
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	defer r.Body.Close()
+	var creds struct {
+		Name string `json:"name"`
+		ID   int    `json:"id"`
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+		http.Error(w, "Invalid request body", http.StatusUnauthorized)
+		return
+	}
+	if EditUser(creds.Name, creds.ID, creds.Role) == nil {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+		return
+	}
+	http.Error(w, "Invalid request body", http.StatusBadRequest)
+}
+
+func HandleGetUsers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	type userSummary struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+		Role string `json:"role"`
+	}
+	users := make([]userSummary, 0, len(user_map))
+	for _, user := range user_map {
+		users = append(users, userSummary{
+			ID:   user.ID,
+			Name: user.Name,
+			Role: user.Role,
+		})
+	}
+	sort.Slice(users, func(i, j int) bool {
+		return users[i].Name < users[j].Name
+	})
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(users); err != nil {
+		http.Error(w, "Failed to encode users", http.StatusInternalServerError)
+	}
+}
+
+func HandleSetPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	user := requestUser(w, r)
+	if user == nil {
+		return
+	}
+	defer r.Body.Close()
+	var passwords struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&passwords); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := SetUserPassword(user, passwords.CurrentPassword, passwords.NewPassword); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func HandleCurrentUser(w http.ResponseWriter, r *http.Request) {

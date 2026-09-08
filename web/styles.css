@@ -47,7 +47,8 @@ h1 {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -68,6 +69,7 @@ button:hover {
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 li:focus-visible {
   outline: 3px solid #9bbcff;
   outline-offset: 2px;
@@ -293,6 +295,31 @@ li:focus-visible {
   background: #ffffff;
 }
 
+.todo-popup select {
+  width: 100%;
+  border: 1px solid #c7ced9;
+  border-radius: 0.5rem;
+  padding: 0.7rem 0.8rem;
+  color: #172033;
+  background: #ffffff;
+}
+
+.user-list-popup {
+  width: min(90vw, 36rem);
+}
+
+.user-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.user-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8rem auto;
+  gap: 0.65rem;
+  align-items: center;
+}
+
 .todo-popup p {
   margin: 0;
   color: #526581;
@@ -338,6 +365,10 @@ li:focus-visible {
   margin: 0;
   color: #b42318;
   font-size: 0.9rem;
+}
+
+.auth-error.is-success {
+  color: #25733b;
 }
 
 .auth-card label {
