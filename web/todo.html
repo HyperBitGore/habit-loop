@@ -10,7 +10,10 @@
   <body>
     <header class="page-header">
       <h1>Habits</h1>
-      <button id="logout" type="button">Logout</button>
+      <div class="header-actions">
+        <button id="create-user" type="button" hidden>Create User</button>
+        <button id="logout" type="button">Logout</button>
+      </div>
     </header>
     <button id="add-todo" type="button">Add Todo</button>
     <ul id="todo-list" aria-live="polite"></ul>
@@ -35,6 +38,25 @@
         <p>Complete: <span id="todo-detail-complete"></span></p>
         <button type="button" id="todo-detail-save">Save</button>
         <button type="button" id="todo-detail-delete">Delete</button>
+      </section>
+    </div>
+
+    <div id="user-popup" class="todo-popup-overlay" hidden>
+      <section class="todo-popup" role="dialog" aria-modal="true" aria-labelledby="user-popup-title">
+        <button id="user-close" type="button">Close</button>
+        <h2 id="user-popup-title">Create User</h2>
+        <form id="user-form">
+          <label for="user-name">Username</label>
+          <input id="user-name" name="name" type="text" required />
+          <label for="user-password">Password</label>
+          <input id="user-password" name="password" type="password" required />
+          <label for="user-role">Role</label>
+          <select id="user-role" name="role">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+          <button type="submit">Create User</button>
+        </form>
       </section>
     </div>
   </body>

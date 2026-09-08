@@ -41,3 +41,29 @@ export async function logout () {
         window.location.assign("./login.html");
     }
 }
+
+export async function registerUser (name, password, role) {
+    const response = await fetch("/api/register_user", {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            name,
+            password,
+            role
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error("Unable to register user.");
+    }
+}
+
+export async function getCurrentUser () {
+    const response = await fetch("/api/current_user");
+    if (!response.ok) {
+        throw new Error("Unable to determine the current user.");
+    }
+    return response.json();
+}

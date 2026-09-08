@@ -17,19 +17,23 @@ type Task struct {
 	ID       uint64    `json:"id"`
 }
 
-var tasks []Task
-var nextTaskID uint64
-
-func initTasks() {
-	fmt.Println("Initing Tasks!")
-	tasks = make([]Task, 0, 4096)
-}
 func handleGetTodos(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Recieved a todo list request")
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	cookie, err := r.Cookie("auth")
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	token, err := strconv.ParseUint(cookie.Value, 10, 64)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	tasks := GetUserTasks(token)
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -48,9 +52,9 @@ func handleGetTodos(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func addTask(name string, date time.Time, complete bool) {
-	task := Task{Name: name, Date: date, Complete: complete, ID: atomic.AddUint64(&nextTaskID, 1)}
-	tasks = append(tasks, task)
+func addTask(tasks *[]Task, nextTaskID *uint64, name string, date time.Time, complete bool) {
+	task := Task{Name: name, Date: date, Complete: complete, ID: atomic.AddUint64(nextTaskID, 1)}
+	*tasks = append(*tasks, task)
 }
 
 func parseTaskDate(value string) (time.Time, error) {
@@ -69,22 +73,35 @@ func HandleAddTask(w http.ResponseWriter, r *http.Request) {
 	name := r.Header.Get("X-Task-Name")
 	date, err := parseTaskDate(r.Header.Get("X-Task-Date"))
 	if err != nil {
-		fmt.Println("Error parsing time:", err)
+		http.Error(w, "Invalid task date", http.StatusBadRequest)
 		return
 	}
 	complete, err := strconv.ParseBool(r.Header.Get("X-Task-Complete"))
 	if err != nil {
-		fmt.Println("Error parsing complete: ", err)
+		http.Error(w, "Invalid task completion value", http.StatusBadRequest)
+		return
 	}
-	addTask(name, date, complete)
+	cookie, err := r.Cookie("auth")
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	token, err := strconv.ParseUint(cookie.Value, 10, 64)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	user := GetUserFromToken(token)
+	addTask(&user.Tasks, &user.NextTaskID, name, date, complete)
+	user_map[user.ID] = *user
 }
 
-func removeTask(id uint64) {
-	idx := slices.IndexFunc(tasks, func(n Task) bool {
+func removeTask(tasks *[]Task, id uint64) {
+	idx := slices.IndexFunc(*tasks, func(n Task) bool {
 		return id == n.ID
 	})
 	if idx != -1 {
-		tasks = append(tasks[:idx], tasks[idx+1:]...)
+		*tasks = append((*tasks)[:idx], (*tasks)[idx+1:]...)
 	}
 }
 
@@ -96,18 +113,30 @@ func HandleRemoveTask(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := strconv.ParseUint(r.Header.Get("X-Task-ID"), 10, 64)
 	if err != nil {
-		fmt.Println("Error parsing ID: ", err)
+		http.Error(w, "Invalid task ID", http.StatusBadRequest)
+		return
 	}
-	removeTask(id)
+	cookie, err := r.Cookie("auth")
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	token, err := strconv.ParseUint(cookie.Value, 10, 64)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	user := GetUserFromToken(token)
+	removeTask(&user.Tasks, id)
+	user_map[user.ID] = *user
 }
 
-func editTask(id uint64, name string, date time.Time, complete bool) {
-	idx := slices.IndexFunc(tasks, func(n Task) bool {
+func editTask(tasks *[]Task, id uint64, name string, date time.Time, complete bool) {
+	idx := slices.IndexFunc(*tasks, func(n Task) bool {
 		return id == n.ID
 	})
-	fmt.Printf("ID: %d", idx)
 	if idx != -1 {
-		tasks[idx] = Task{Name: name, Date: date, Complete: complete, ID: id}
+		(*tasks)[idx] = Task{Name: name, Date: date, Complete: complete, ID: id}
 	}
 }
 
@@ -119,17 +148,31 @@ func HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := strconv.ParseUint(r.Header.Get("X-Task-ID"), 10, 64)
 	if err != nil {
-		fmt.Println("Error parsing ID: ", err)
+		http.Error(w, "Invalid task ID", http.StatusBadRequest)
+		return
 	}
 	name := r.Header.Get("X-Task-Name")
 	date, err := parseTaskDate(r.Header.Get("X-Task-Date"))
 	if err != nil {
-		fmt.Println("Error parsing time:", err)
+		http.Error(w, "Invalid task date", http.StatusBadRequest)
 		return
 	}
 	complete, err := strconv.ParseBool(r.Header.Get("X-Task-Complete"))
 	if err != nil {
-		fmt.Println("Error parsing complete: ", err)
+		http.Error(w, "Invalid task completion value", http.StatusBadRequest)
+		return
 	}
-	editTask(id, name, date, complete)
+	cookie, err := r.Cookie("auth")
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	token, err := strconv.ParseUint(cookie.Value, 10, 64)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	user := GetUserFromToken(token)
+	editTask(&user.Tasks, id, name, date, complete)
+	user_map[user.ID] = *user
 }

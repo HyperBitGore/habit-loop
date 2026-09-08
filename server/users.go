@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -15,16 +16,20 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 )
+
 type UserSession struct {
-	Token uint64 `json:"token"`
+	Token      uint64    `json:"token"`
 	Expiration time.Time `json:"expiration"`
 }
 
 const usersDir = "users"
 const sessionTimeMinutes = 30
+
 var user_sessions = map[int]UserSession{}
 var token_map = map[uint64]int{}
 var sessionMu sync.Mutex
+var user_map = map[int]User{}
+var id_map = map[string]int{}
 
 type User struct {
 	Name       string `json:"name"`
@@ -32,6 +37,7 @@ type User struct {
 	Password   []byte `json:"password"` // hash
 	Tasks      []Task `json:"tasks"`
 	NextTaskID uint64 `json:"next_task_id"`
+	Role       string `json:"role"`
 }
 
 func fileExists(filename string) bool {
@@ -50,56 +56,87 @@ func userPath(name string) string {
 	return filepath.Join(usersDir, name)
 }
 
-func createUser(name string, password []byte) User {
-	user := User{Name: name, ID: 0, Password: password, Tasks: make([]Task, 0, 4096), NextTaskID: 0}
+func createUser(name string, password []byte, role string) User {
+	user := User{Name: name, ID: 0, Password: password, Tasks: make([]Task, 0, 4096), NextTaskID: 0, Role: role}
 	return user
 }
 
-func getUser(name string) User {
-	if fileExists(userPath(name)) {
-		// read file
-		file, err := os.ReadFile(userPath(name))
+// edits user_map
+func ReadUsers() map[int]User {
+	// switch this to sql eventually
+	if fileExists("users/db") {
+		file, err := os.ReadFile("users/db")
 		if err != nil {
-			log.Fatalf("Failed to read JSON file for user: %v", err)
-			return User{ID: -1}
+			log.Fatalf("Failed to read user JSON db file: %v", err)
+			return nil
 		}
-		var user User
-		err = json.Unmarshal(file, &user)
+		var temp = map[int]User{}
+		err = json.Unmarshal(file, &temp)
 		if err != nil {
 			log.Fatalf("Failed to unmarshal JSON: %v", err)
-			return User{ID: -1}
+			return nil
 		}
-		return user
+		for key := range temp {
+			user := temp[key]
+			id_map[user.Name] = user.ID
+		}
+		return temp
 	}
-	return User{ID: -1}
+	return nil
 }
 
-func saveUser(user User) error {
+func WriteUsers(m map[int]User) error {
 	if err := os.MkdirAll(usersDir, 0700); err != nil {
-		return err
+		return fmt.Errorf("Failed to read make user folder: %v", err)
 	}
-
-	file, err := os.Create(userPath(user.Name))
+	file, err := os.Create("users/db")
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to create users db: %v", err)
 	}
 	defer file.Close()
-
-	jsondata, err := json.Marshal(user)
+	jsondata, err := json.Marshal(m)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to marshal json db: %v", err)
 	}
 	_, err = file.Write(jsondata)
-	return err
+	if err != nil {
+		return fmt.Errorf("Failed to write json db: %v", err)
+	}
+	return nil
 }
 
-func AddUser(name string, password string) error {
+func getUser(name string) User {
+	id, ok := id_map[name]
+	if !ok {
+		return User{ID: -1}
+	}
+	user, ok := user_map[id]
+	if !ok {
+		return User{ID: -1}
+	}
+	return user
+}
+
+func nextUserID() int {
+	nextID := 0
+	for id := range user_map {
+		if id >= nextID {
+			nextID = id + 1
+		}
+	}
+	return nextID
+}
+
+func AddUser(name string, password string, role string) error {
 	password_bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to generate password hash! %v", err)
 	}
-	user := createUser(name, password_bytes)
-	return saveUser(user)
+	user := createUser(name, password_bytes, role)
+	user.ID = nextUserID()
+	id_map[user.Name] = user.ID
+	user_map[user.ID] = user
+	return WriteUsers(user_map)
 }
 
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +159,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	err := bcrypt.CompareHashAndPassword(user.Password, []byte(creds.Password))
 	if err == nil {
 		token := GetUserSessionCookie(&user)
-		token_cookie := http.Cookie{ Name: "auth", Value: strconv.FormatUint(token, 10), HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode, Path: "/", MaxAge: sessionTimeMinutes * 60 }
+		token_cookie := http.Cookie{Name: "auth", Value: strconv.FormatUint(token, 10), HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode, Path: "/", MaxAge: sessionTimeMinutes * 60}
 		http.SetCookie(w, &token_cookie)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
@@ -134,18 +171,18 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func HandleLogout (w http.ResponseWriter, r *http.Request) {
+func HandleLogout(w http.ResponseWriter, r *http.Request) {
 	log.Println("Recieved a logout request")
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	cookie, err := r.Cookie("auth")
-	if (err != nil || cookie.Value == "") {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	token_cookie := http.Cookie{ Name: "auth", Value: "", HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode, Path: "/", MaxAge: -1 }
+	token_cookie := http.Cookie{Name: "auth", Value: "", HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode, Path: "/", MaxAge: -1}
 	http.SetCookie(w, &token_cookie)
 
 	token, err := strconv.ParseUint(cookie.Value, 10, 64)
@@ -161,17 +198,68 @@ func HandleLogout (w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-
 func HandleRegisterUser(w http.ResponseWriter, r *http.Request) {
 	log.Println("Recieved a todo list request")
 	if r.Method != http.MethodPut {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
+	cookie, err := r.Cookie("auth")
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	token, err := strconv.ParseUint(cookie.Value, 10, 64)
+	// check if token is an admins
+	user := GetUserFromToken(token)
+	if user.Role != "admin" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	defer r.Body.Close()
+	var creds struct {
+		Name     string `json:"name"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+		http.Error(w, "Invalid request body", http.StatusUnauthorized)
+		return
+	}
+	if AddUser(creds.Name, creds.Password, creds.Role) == nil {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+		return
+	}
+	http.Error(w, "Invalid request body", http.StatusBadRequest)
 }
 
-func new_token () uint64 {
+func HandleCurrentUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	cookie, err := r.Cookie("auth")
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	token, err := strconv.ParseUint(cookie.Value, 10, 64)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	user := GetUserFromToken(token)
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]string{
+		"name": user.Name,
+		"role": user.Role,
+	}); err != nil {
+		http.Error(w, "Failed to encode current user", http.StatusInternalServerError)
+	}
+}
+
+func new_token() uint64 {
 	b := make([]byte, 8)
 	_, err := rand.Read(b)
 	if err != nil {
@@ -196,13 +284,13 @@ func checkUserSessionTokenLocked(user *User) bool {
 	return false
 }
 
-func CheckUserSessionToken (user *User) bool {
+func CheckUserSessionToken(user *User) bool {
 	sessionMu.Lock()
 	defer sessionMu.Unlock()
 	return checkUserSessionTokenLocked(user)
 }
 
-func CheckSessionToken (token uint64) bool {
+func CheckSessionToken(token uint64) bool {
 	sessionMu.Lock()
 	defer sessionMu.Unlock()
 	t, ok := token_map[token]
@@ -223,7 +311,7 @@ func CheckSessionToken (token uint64) bool {
 }
 
 // just not gonna worry abt collisions such a low chance
-func GetUserSessionCookie (user *User) uint64 {
+func GetUserSessionCookie(user *User) uint64 {
 	sessionMu.Lock()
 	defer sessionMu.Unlock()
 	if checkUserSessionTokenLocked(user) {
@@ -232,7 +320,36 @@ func GetUserSessionCookie (user *User) uint64 {
 	now := time.Now()
 	token := new_token()
 	expire := now.Add(sessionTimeMinutes * time.Minute)
-	user_sessions[user.ID] = UserSession{ Token: token, Expiration: expire}
+	user_sessions[user.ID] = UserSession{Token: token, Expiration: expire}
 	token_map[token] = user.ID
 	return token
+}
+
+func GetUserFromToken(token uint64) *User {
+	id, ok := token_map[token]
+	if !ok {
+		return &User{ID: -1}
+	}
+	user, ok := user_map[id]
+	if !ok {
+		return &User{ID: -1}
+	}
+	return &user
+}
+
+func GetUserTasks(token uint64) []Task {
+	user := GetUserFromToken(token)
+	if user.ID == -1 {
+		return []Task{}
+	}
+	return user.Tasks
+}
+
+func UserExists(name string) bool {
+	_, ok := id_map[name]
+	if !ok {
+		return false
+	}
+	_, ok = user_map[id_map[name]]
+	return ok
 }

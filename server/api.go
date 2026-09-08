@@ -3,30 +3,27 @@ package main
 // recieve api requests and send to other api file functions
 
 // TODO
-//	- add seperate users
 //	- add task data saving
 //	- add repeating tasks
-//  - Session creation and validation.
-//  - Authentication middleware on every task route.
 //  - Admin middleware on account-management routes.
-//	- Concurrency protection around shared  tasks  state.
-//	- Explicit validation and error responses.
+//	- Concurrency protection around shared tasks state.
+//	- switch to sqlite3
 
 import (
 	"bufio"
 	"fmt"
+	"golang.org/x/term"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
-	"golang.org/x/term"
 )
 
-func authMiddleware (next http.Handler) http.Handler {
+func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("auth")
-		if (err != nil || cookie.Value == "") {
-			    http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		if err != nil || cookie.Value == "" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 		token, err := strconv.ParseUint(cookie.Value, 10, 64)
@@ -38,20 +35,23 @@ func authMiddleware (next http.Handler) http.Handler {
 	})
 }
 
-
 func main() {
-	if !fileExists(userPath("admin")) {
+	loadedUsers := ReadUsers()
+	if loadedUsers != nil {
+		user_map = loadedUsers
+	}
+	if !UserExists("admin") {
 		if err := createAdmin(); err != nil {
 			log.Fatal(err)
 		}
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/api/get_tasks", authMiddleware(
-    	http.HandlerFunc(handleGetTodos),
+		http.HandlerFunc(handleGetTodos),
 	))
 	mux.Handle("/", http.FileServer(http.Dir("../web")))
 	mux.Handle("/api/add_task", authMiddleware(
-    	http.HandlerFunc(HandleAddTask),
+		http.HandlerFunc(HandleAddTask),
 	))
 
 	mux.Handle("/api/remove_task", authMiddleware(
@@ -63,6 +63,12 @@ func main() {
 	))
 	mux.HandleFunc("/api/login", HandleLogin)
 	mux.HandleFunc("/api/logout", HandleLogout)
+	mux.Handle("/api/register_user", authMiddleware(
+		http.HandlerFunc(HandleRegisterUser),
+	))
+	mux.Handle("/api/current_user", authMiddleware(
+		http.HandlerFunc(HandleCurrentUser),
+	))
 	log.Println("Server listening on http://localhost:8081")
 	log.Fatal(http.ListenAndServe(":8081", mux))
 }
@@ -84,5 +90,5 @@ func createAdmin() error {
 	}
 	fmt.Println()
 
-	return AddUser(adminName, string(adminPassword))
+	return AddUser(adminName, string(adminPassword), "admin")
 }

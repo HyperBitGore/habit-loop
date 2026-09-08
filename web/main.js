@@ -1,5 +1,5 @@
 import { todoOpen, todoClose, fetchTodos, addTodo, todoDetailClose, deleteSelectedTodo, saveSelectedTodo } from "./todos.js";
-import { logout } from "./users.js";
+import { getCurrentUser, logout, registerUser } from "./users.js";
 
 let currentTodoName = "";
 let currentDate = formatDateForServer(new Date());
@@ -15,6 +15,45 @@ function formatDateForServer(date) {
 fetchTodos(currentDate.slice(0, 10));
 
 const todoOpenButton = document.querySelector("#add-todo");
+const createUserButton = document.querySelector("#create-user");
+const userPopup = document.querySelector("#user-popup");
+const userCloseButton = document.querySelector("#user-close");
+const userForm = document.querySelector("#user-form");
+
+getCurrentUser()
+    .then((user) => {
+        if (user.role === "admin") {
+            createUserButton.hidden = false;
+        }
+    })
+    .catch((error) => {
+        console.error("Failed to load current user:", error);
+    });
+
+createUserButton.addEventListener("click", () => {
+    userForm.reset();
+    userPopup.hidden = false;
+});
+
+userCloseButton.addEventListener("click", () => {
+    userPopup.hidden = true;
+});
+
+userForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(userForm);
+    try {
+        await registerUser(
+            formData.get("name"),
+            formData.get("password"),
+            formData.get("role")
+        );
+        userPopup.hidden = true;
+        userForm.reset();
+    } catch (error) {
+        console.error("Failed to create user:", error);
+    }
+});
 
 const logoutButton = document.querySelector("#logout");
 logoutButton.addEventListener("click", logout);
