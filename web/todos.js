@@ -17,10 +17,11 @@ export function showTodo (hide) {
 
 function renderTodos (todos) {
     const todoList = document.querySelector("#todo-list");
-    todoList.replaceChildren();
+    todoList.querySelectorAll('[data-row-type="todo"]').forEach((row) => row.remove());
     todoArray = todos;
     for (const todo of todos) {
         const listItem = document.createElement("li");
+        listItem.dataset.rowType = "todo";
         const todoName = document.createElement("span");
         todoName.textContent = todo.name;
         const completeButton = document.createElement("button");
@@ -33,7 +34,7 @@ function renderTodos (todos) {
         completeButton.addEventListener("click", async (event) => {
             event.stopPropagation();
             await toggleTodoComplete(todo);
-            await fetchTodos(formatLocalDate(new Date()));
+            await fetchTodos(todo.date.slice(0, 10));
         });
         listItem.addEventListener("click", () => openTodoDetail(todo));
         listItem.append(todoName, completeButton);
@@ -59,11 +60,6 @@ export function todoDetailClose () {
 // Converts an RFC 3339 date from the server into the "2006-01-02 15:04:05" layout
 function formatServerDate (date) {
     return date.slice(0, 19).replace("T", " ");
-}
-
-function formatLocalDate (date) {
-    const pad = (value) => String(value).padStart(2, "0");
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 export async function saveSelectedTodo (name) {
@@ -111,6 +107,7 @@ export async function fetchTodos (date) {
             throw new Error(`HTTP error! Status: ${response.status}`);
         }
         const data = await response.json();
+        console.log(data);
         renderTodos(data);
     } catch (error) {
         console.error("Failed to fetch todos, ", error.message);

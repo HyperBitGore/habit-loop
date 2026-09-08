@@ -13,7 +13,7 @@ body {
 
 body > h1,
 body > .page-header,
-body > #add-todo,
+body > .add-actions,
 body > #todo-list {
   width: min(100%, 40rem);
   margin-right: auto;
@@ -73,16 +73,20 @@ li:focus-visible {
   outline-offset: 2px;
 }
 
-#add-todo {
-  display: block;
+.add-actions {
+  display: flex;
+  gap: 0.65rem;
   margin-bottom: 1rem;
+}
+
+.add-actions button {
   border-color: #263b63;
   color: #ffffff;
   background: #263b63;
   font-weight: 650;
 }
 
-#add-todo:hover {
+.add-actions button:hover {
   border-color: #1d2e4e;
   background: #1d2e4e;
 }
@@ -125,6 +129,122 @@ li:focus-visible {
   font-weight: 700;
 }
 
+.habit-loop-icon {
+  color: #526581;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.habit-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.habit-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.65rem;
+  margin: 0.25rem 0;
+}
+
+.habit-stats div {
+  padding: 0.65rem;
+  border-radius: 0.5rem;
+  background: #f3f5f8;
+}
+
+.habit-stats dt {
+  color: #526581;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.habit-stats dd {
+  margin: 0.25rem 0 0;
+  color: #172033;
+  font-weight: 750;
+}
+
+.habit-calendar {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.habit-calendar-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.habit-calendar-controls h3 {
+  margin: 0;
+  text-align: center;
+  font-size: 1rem;
+}
+
+.habit-calendar-controls button {
+  padding: 0.3rem 0.55rem;
+}
+
+.habit-calendar-weekdays,
+.habit-calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.3rem;
+}
+
+.habit-calendar-weekdays span {
+  color: #667085;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.habit-calendar-day,
+.habit-calendar-blank {
+  display: grid;
+  min-height: 2rem;
+  place-items: center;
+  border-radius: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.habit-calendar-day {
+  background: #f3f5f8;
+}
+
+.habit-calendar-day.is-complete {
+  color: #ffffff;
+  background: #25733b;
+  font-weight: 750;
+}
+
+.habit-calendar-day.is-skipped {
+  color: #7a4b00;
+  background: #fff0c2;
+  font-weight: 750;
+}
+
+.habit-calendar-day.is-today {
+  outline: 2px solid #263b63;
+  outline-offset: 1px;
+}
+
+#todo-list li button.is-complete {
+  border-color: #b7d7c0;
+  color: #25733b;
+  background: #edf8f0;
+}
+
+#todo-list li button.is-skipped {
+  border-color: #e4bd68;
+  color: #7a4b00;
+  background: #fff0c2;
+}
+
 .todo-popup-overlay[hidden] {
   display: none;
 }
@@ -145,6 +265,11 @@ li:focus-visible {
   border-radius: 0.5rem;
   background: white;
   box-shadow: 0 1rem 2.5rem rgb(16 24 40 / 20%);
+}
+
+.todo-popup form {
+  display: grid;
+  gap: 0.75rem;
 }
 
 .todo-popup h2 {

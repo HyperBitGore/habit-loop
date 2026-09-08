@@ -13,9 +13,14 @@
       <div class="header-actions">
         <button id="create-user" type="button" hidden>Create User</button>
         <button id="logout" type="button">Logout</button>
+        <label for="task-date">Date</label>
+        <input id="task-date" type="date" />
       </div>
     </header>
-    <button id="add-todo" type="button">Add Todo</button>
+    <div class="add-actions">
+      <button id="add-todo" type="button">Add Todo</button>
+      <button id="add-habit" type="button">Add Habit</button>
+    </div>
     <ul id="todo-list" aria-live="polite"></ul>
 
     <div id="todo-popup" class="todo-popup-overlay" hidden>
@@ -25,6 +30,68 @@
         <label for="todo-title">TODO Name</label>
         <input id="todo-title" type="text" />
         <button type="button" id="todo-save">Save</button>
+      </section>
+    </div>
+
+    <div id="habit-popup" class="todo-popup-overlay" hidden>
+      <section class="todo-popup" role="dialog" aria-modal="true" aria-labelledby="habit-popup-title">
+        <button id="habit-close" type="button">Close</button>
+        <h2 id="habit-popup-title">Add Habit</h2>
+        <form id="habit-form">
+          <label for="habit-name">Habit Name</label>
+          <input id="habit-name" name="name" type="text" required />
+          <p id="habit-error" class="auth-error" role="alert" hidden></p>
+          <button type="submit">Save</button>
+        </form>
+      </section>
+    </div>
+
+    <div id="habit-detail-popup" class="todo-popup-overlay" hidden>
+      <section class="todo-popup" role="dialog" aria-modal="true" aria-labelledby="habit-detail-title">
+        <button id="habit-detail-close" type="button">Close</button>
+        <h2 id="habit-detail-title">Edit Habit</h2>
+        <form id="habit-detail-form">
+          <label for="habit-detail-name">Habit Name</label>
+          <input id="habit-detail-name" name="name" type="text" required />
+          <dl class="habit-stats">
+            <div>
+              <dt>Total completed</dt>
+              <dd id="habit-total-completions">0 days</dd>
+            </div>
+            <div>
+              <dt>Current streak</dt>
+              <dd id="habit-current-streak">0 days</dd>
+            </div>
+            <div>
+              <dt>Longest streak</dt>
+              <dd id="habit-longest-streak">0 days</dd>
+            </div>
+            <div>
+              <dt>Total skipped</dt>
+              <dd id="habit-total-skips">0 days</dd>
+            </div>
+          </dl>
+          <section class="habit-calendar" aria-labelledby="habit-calendar-month">
+            <div class="habit-calendar-controls">
+              <button id="habit-calendar-previous" type="button" aria-label="Previous month">←</button>
+              <h3 id="habit-calendar-month"></h3>
+              <button id="habit-calendar-next" type="button" aria-label="Next month">→</button>
+            </div>
+            <div class="habit-calendar-weekdays" aria-hidden="true">
+              <span>Sun</span>
+              <span>Mon</span>
+              <span>Tue</span>
+              <span>Wed</span>
+              <span>Thu</span>
+              <span>Fri</span>
+              <span>Sat</span>
+            </div>
+            <div id="habit-calendar-days" class="habit-calendar-days"></div>
+          </section>
+          <p id="habit-detail-error" class="auth-error" role="alert" hidden></p>
+          <button type="submit">Save</button>
+          <button id="habit-detail-delete" type="button">Delete</button>
+        </form>
       </section>
     </div>
 

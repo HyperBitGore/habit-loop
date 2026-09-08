@@ -3,8 +3,6 @@ package main
 // recieve api requests and send to other api file functions
 
 // TODO
-//	- add task data saving
-//	- add repeating tasks
 //  - Admin middleware on account-management routes.
 //	- Concurrency protection around shared tasks state.
 //	- switch to sqlite3
@@ -68,6 +66,30 @@ func main() {
 	))
 	mux.Handle("/api/current_user", authMiddleware(
 		http.HandlerFunc(HandleCurrentUser),
+	))
+	mux.Handle("/api/get_habits", authMiddleware(
+		http.HandlerFunc(HandleGetHabits),
+	))
+	mux.Handle("/api/add_habit", authMiddleware(
+		http.HandlerFunc(HandleAddHabit),
+	))
+	mux.Handle("/api/delete_habit", authMiddleware(
+		http.HandlerFunc(HandleDeleteHabit),
+	))
+	mux.Handle("/api/edit_habit", authMiddleware(
+		http.HandlerFunc(HandleEditHabit),
+	))
+	mux.Handle("/api/complete_habit", authMiddleware(
+		http.HandlerFunc(HandleCompleteHabit),
+	))
+	mux.Handle("/api/uncomplete_habit", authMiddleware(
+		http.HandlerFunc(HandleUncompleteHabit),
+	))
+	mux.Handle("/api/skip_habit", authMiddleware(
+		http.HandlerFunc(HandleSkipHabit),
+	))
+	mux.Handle("/api/unskip_habit", authMiddleware(
+		http.HandlerFunc(HandleUnskipHabit),
 	))
 	log.Println("Server listening on http://localhost:8081")
 	log.Fatal(http.ListenAndServe(":8081", mux))

@@ -1,5 +1,13 @@
 import { todoOpen, todoClose, fetchTodos, addTodo, todoDetailClose, deleteSelectedTodo, saveSelectedTodo } from "./todos.js";
 import { getCurrentUser, logout, registerUser } from "./users.js";
+import {
+    addHabit,
+    changeHabitCalendarMonth,
+    closeHabitDetail,
+    deleteSelectedHabit,
+    fetchHabits,
+    saveSelectedHabit
+} from "./habits.js";
 
 let currentTodoName = "";
 let currentDate = formatDateForServer(new Date());
@@ -12,13 +20,103 @@ function formatDateForServer(date) {
         `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-fetchTodos(currentDate.slice(0, 10));
+function localDateString(date = new Date()) {
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function dateTimeForSelectedDate(dateValue) {
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${dateValue} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
 
 const todoOpenButton = document.querySelector("#add-todo");
+const habitOpenButton = document.querySelector("#add-habit");
+const habitPopup = document.querySelector("#habit-popup");
+const habitCloseButton = document.querySelector("#habit-close");
+const habitForm = document.querySelector("#habit-form");
+const habitError = document.querySelector("#habit-error");
+const habitDetailCloseButton = document.querySelector("#habit-detail-close");
+const habitDetailForm = document.querySelector("#habit-detail-form");
+const habitDetailDeleteButton = document.querySelector("#habit-detail-delete");
+const habitDetailError = document.querySelector("#habit-detail-error");
+const habitCalendarPreviousButton = document.querySelector("#habit-calendar-previous");
+const habitCalendarNextButton = document.querySelector("#habit-calendar-next");
+const taskDateInput = document.querySelector("#task-date");
 const createUserButton = document.querySelector("#create-user");
 const userPopup = document.querySelector("#user-popup");
 const userCloseButton = document.querySelector("#user-close");
 const userForm = document.querySelector("#user-form");
+
+taskDateInput.value = localDateString();
+fetchTodos(taskDateInput.value);
+fetchHabits(taskDateInput.value).catch((error) => {
+    console.error("Failed to fetch habits:", error);
+});
+
+taskDateInput.addEventListener("change", () => {
+    currentDate = dateTimeForSelectedDate(taskDateInput.value);
+    fetchTodos(taskDateInput.value);
+    fetchHabits(taskDateInput.value).catch((error) => {
+        console.error("Failed to fetch habits:", error);
+    });
+});
+
+habitOpenButton.addEventListener("click", () => {
+    habitForm.reset();
+    habitError.hidden = true;
+    habitPopup.hidden = false;
+});
+
+habitCloseButton.addEventListener("click", () => {
+    habitPopup.hidden = true;
+});
+
+habitForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(habitForm);
+    habitError.hidden = true;
+    try {
+        await addHabit(formData.get("name"));
+        await fetchHabits(taskDateInput.value);
+        habitPopup.hidden = true;
+        habitForm.reset();
+    } catch (error) {
+        habitError.textContent = error.message;
+        habitError.hidden = false;
+    }
+});
+
+habitDetailCloseButton.addEventListener("click", closeHabitDetail);
+habitCalendarPreviousButton.addEventListener("click", () => {
+    changeHabitCalendarMonth(-1);
+});
+habitCalendarNextButton.addEventListener("click", () => {
+    changeHabitCalendarMonth(1);
+});
+
+habitDetailForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(habitDetailForm);
+    habitDetailError.hidden = true;
+    try {
+        await saveSelectedHabit(formData.get("name"), taskDateInput.value);
+    } catch (error) {
+        habitDetailError.textContent = error.message;
+        habitDetailError.hidden = false;
+    }
+});
+
+habitDetailDeleteButton.addEventListener("click", async () => {
+    habitDetailError.hidden = true;
+    try {
+        await deleteSelectedHabit(taskDateInput.value);
+    } catch (error) {
+        habitDetailError.textContent = error.message;
+        habitDetailError.hidden = false;
+    }
+});
 
 getCurrentUser()
     .then((user) => {

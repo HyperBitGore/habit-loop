@@ -23,17 +23,11 @@ func handleGetTodos(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	cookie, err := r.Cookie("auth")
-	if err != nil || cookie.Value == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	user := requestUser(w, r)
+	if user == nil {
 		return
 	}
-	token, err := strconv.ParseUint(cookie.Value, 10, 64)
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-	tasks := GetUserTasks(token)
+	tasks := user.Tasks
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -81,19 +75,13 @@ func HandleAddTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid task completion value", http.StatusBadRequest)
 		return
 	}
-	cookie, err := r.Cookie("auth")
-	if err != nil || cookie.Value == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	user := requestUser(w, r)
+	if user == nil {
 		return
 	}
-	token, err := strconv.ParseUint(cookie.Value, 10, 64)
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-	user := GetUserFromToken(token)
 	addTask(&user.Tasks, &user.NextTaskID, name, date, complete)
 	user_map[user.ID] = *user
+	WriteUsers(user_map)
 }
 
 func removeTask(tasks *[]Task, id uint64) {
@@ -116,19 +104,13 @@ func HandleRemoveTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid task ID", http.StatusBadRequest)
 		return
 	}
-	cookie, err := r.Cookie("auth")
-	if err != nil || cookie.Value == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	user := requestUser(w, r)
+	if user == nil {
 		return
 	}
-	token, err := strconv.ParseUint(cookie.Value, 10, 64)
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-	user := GetUserFromToken(token)
 	removeTask(&user.Tasks, id)
 	user_map[user.ID] = *user
+	WriteUsers(user_map)
 }
 
 func editTask(tasks *[]Task, id uint64, name string, date time.Time, complete bool) {
@@ -162,17 +144,11 @@ func HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid task completion value", http.StatusBadRequest)
 		return
 	}
-	cookie, err := r.Cookie("auth")
-	if err != nil || cookie.Value == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	user := requestUser(w, r)
+	if user == nil {
 		return
 	}
-	token, err := strconv.ParseUint(cookie.Value, 10, 64)
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-	user := GetUserFromToken(token)
 	editTask(&user.Tasks, id, name, date, complete)
 	user_map[user.ID] = *user
+	WriteUsers(user_map)
 }

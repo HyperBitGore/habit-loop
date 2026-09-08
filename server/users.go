@@ -32,12 +32,14 @@ var user_map = map[int]User{}
 var id_map = map[string]int{}
 
 type User struct {
-	Name       string `json:"name"`
-	ID         int    `json:"id"`
-	Password   []byte `json:"password"` // hash
-	Tasks      []Task `json:"tasks"`
-	NextTaskID uint64 `json:"next_task_id"`
-	Role       string `json:"role"`
+	Name        string  `json:"name"`
+	ID          int     `json:"id"`
+	Password    []byte  `json:"password"` // hash
+	Tasks       []Task  `json:"tasks"`
+	NextTaskID  uint64  `json:"next_task_id"`
+	Role        string  `json:"role"`
+	Habits      []Habit `json:"habits"`
+	NextHabitID uint64  `json:"next_habit_id"`
 }
 
 func fileExists(filename string) bool {
@@ -57,7 +59,15 @@ func userPath(name string) string {
 }
 
 func createUser(name string, password []byte, role string) User {
-	user := User{Name: name, ID: 0, Password: password, Tasks: make([]Task, 0, 4096), NextTaskID: 0, Role: role}
+	user := User{
+		Name:       name,
+		ID:         0,
+		Password:   password,
+		Tasks:      make([]Task, 0, 4096),
+		NextTaskID: 0,
+		Role:       role,
+		Habits:     make([]Habit, 0),
+	}
 	return user
 }
 
@@ -204,14 +214,10 @@ func HandleRegisterUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	cookie, err := r.Cookie("auth")
-	if err != nil || cookie.Value == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	user := requestUser(w, r)
+	if user == nil {
 		return
 	}
-	token, err := strconv.ParseUint(cookie.Value, 10, 64)
-	// check if token is an admins
-	user := GetUserFromToken(token)
 	if user.Role != "admin" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -239,17 +245,10 @@ func HandleCurrentUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	cookie, err := r.Cookie("auth")
-	if err != nil || cookie.Value == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	user := requestUser(w, r)
+	if user == nil {
 		return
 	}
-	token, err := strconv.ParseUint(cookie.Value, 10, 64)
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-	user := GetUserFromToken(token)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{
 		"name": user.Name,
@@ -335,14 +334,6 @@ func GetUserFromToken(token uint64) *User {
 		return &User{ID: -1}
 	}
 	return &user
-}
-
-func GetUserTasks(token uint64) []Task {
-	user := GetUserFromToken(token)
-	if user.ID == -1 {
-		return []Task{}
-	}
-	return user.Tasks
 }
 
 func UserExists(name string) bool {
