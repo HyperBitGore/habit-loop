@@ -1,15 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,22 +43,6 @@ type User struct {
 	NextHabitID uint64  `json:"next_habit_id"`
 }
 
-func fileExists(filename string) bool {
-	_, err := os.Stat(filename)
-	if err == nil {
-		return true // File exists
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return false // File explicitly does not exist
-	}
-	// The file may or may not exist (e.g., permission denied, disk failure)
-	return false
-}
-
-func userPath(name string) string {
-	return filepath.Join(usersDir, name)
-}
-
 func createUser(name string, password []byte, role string) User {
 	user := User{
 		Name:       name,
@@ -73,94 +56,60 @@ func createUser(name string, password []byte, role string) User {
 	return user
 }
 
-// edits user_map
-func ReadUsers() map[int]User {
-	// switch this to sql eventually
-	if fileExists("users/db") {
-		file, err := os.ReadFile("users/db")
-		if err != nil {
-			log.Fatalf("Failed to read user JSON db file: %v", err)
-			return nil
-		}
-		var temp = map[int]User{}
-		err = json.Unmarshal(file, &temp)
-		if err != nil {
-			log.Fatalf("Failed to unmarshal JSON: %v", err)
-			return nil
-		}
-		for key := range temp {
-			user := temp[key]
-			id_map[user.Name] = user.ID
-		}
-		return temp
-	}
-	return nil
-}
-
-func WriteUsers(m map[int]User) error {
-	if err := os.MkdirAll(usersDir, 0700); err != nil {
-		return fmt.Errorf("Failed to read make user folder: %v", err)
-	}
-	file, err := os.Create("users/db")
-	if err != nil {
-		return fmt.Errorf("Failed to create users db: %v", err)
-	}
-	defer file.Close()
-	jsondata, err := json.Marshal(m)
-	if err != nil {
-		return fmt.Errorf("Failed to marshal json db: %v", err)
-	}
-	_, err = file.Write(jsondata)
-	if err != nil {
-		return fmt.Errorf("Failed to write json db: %v", err)
-	}
-	return nil
-}
-
 func getUser(name string) User {
-	id, ok := id_map[name]
-	if !ok {
-		return User{ID: -1}
-	}
-	user, ok := user_map[id]
+	user, ok := userSnapshotByName(name)
 	if !ok {
 		return User{ID: -1}
 	}
 	return user
 }
 
-func nextUserID() int {
-	nextID := 0
-	for id := range user_map {
-		if id >= nextID {
-			nextID = id + 1
-		}
-	}
-	return nextID
-}
-
 func AddUser(name string, password string, role string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("username is required")
+	}
+	if role != "user" && role != "admin" {
+		return fmt.Errorf("invalid role %q", role)
+	}
 	password_bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("Failed to generate password hash! %v", err)
 	}
-	user := createUser(name, password_bytes, role)
-	user.ID = nextUserID()
-	id_map[user.Name] = user.ID
-	user_map[user.ID] = user
-	return WriteUsers(user_map)
+	return withUserDataWrite(func(users map[int]User, names map[string]int, nextUserID *int) error {
+		if _, exists := names[name]; exists {
+			return fmt.Errorf("username %q is already taken", name)
+		}
+		user := createUser(name, password_bytes, role)
+		user.ID = *nextUserID
+		*nextUserID = *nextUserID + 1
+		names[user.Name] = user.ID
+		users[user.ID] = user
+		return nil
+	})
 }
 
 func DeleteUser(name string, id int) error {
-	if UserExists(name) {
-		delete(id_map, name)
-		delete(user_map, id)
-		if err := WriteUsers(user_map); err != nil {
-			return fmt.Errorf("failed to save edited user: %w", err)
+	err := withUserDataWrite(func(users map[int]User, names map[string]int, nextUserID *int) error {
+		user, ok := users[id]
+		if !ok || user.Name != name {
+			return fmt.Errorf("user %q with ID %d doesn't exist", name, id)
 		}
+		delete(names, user.Name)
+		delete(users, id)
 		return nil
+	})
+	if err != nil {
+		return err
 	}
-	return fmt.Errorf("User doesn't exist! %v", name)
+
+	sessionMu.Lock()
+	if session, ok := user_sessions[id]; ok {
+		delete(token_map, session.Token)
+		delete(user_sessions, id)
+	}
+	sessionMu.Unlock()
+	return nil
 }
 
 func EditUser(name string, id int, role string) error {
@@ -171,29 +120,24 @@ func EditUser(name string, id int, role string) error {
 	if role != "user" && role != "admin" {
 		return fmt.Errorf("invalid role %q", role)
 	}
-	user, ok := user_map[id]
-	if !ok {
-		return fmt.Errorf("user with ID %d doesn't exist", id)
-	}
+	return withUserDataWrite(func(users map[int]User, names map[string]int, nextUserID *int) error {
+		user, ok := users[id]
+		if !ok {
+			return fmt.Errorf("user with ID %d doesn't exist", id)
+		}
+		if existingID, exists := names[name]; exists && existingID != id {
+			return fmt.Errorf("username %q is already taken", name)
+		}
 
-	if existingID, exists := id_map[name]; exists && existingID != id {
-		return fmt.Errorf("username %q is already taken", name)
-	}
-
-	oldName := user.Name
-	user.Name = name
-	user.Role = role
-
-	if oldName != name {
-		delete(id_map, oldName)
-	}
-	id_map[name] = id
-	user_map[id] = user
-
-	if err := WriteUsers(user_map); err != nil {
-		return fmt.Errorf("failed to save edited user: %w", err)
-	}
-	return nil
+		if user.Name != name {
+			delete(names, user.Name)
+		}
+		user.Name = name
+		user.Role = role
+		names[name] = id
+		users[id] = user
+		return nil
+	})
 }
 
 func SetUserPassword(user *User, currentPassword string, newPassword string) error {
@@ -207,12 +151,14 @@ func SetUserPassword(user *User, currentPassword string, newPassword string) err
 	if err != nil {
 		return fmt.Errorf("failed to generate password hash: %w", err)
 	}
-	user.Password = passwordHash
-	user_map[user.ID] = *user
-	if err := WriteUsers(user_map); err != nil {
-		return fmt.Errorf("failed to save password: %w", err)
-	}
-	return nil
+	originalHash := slices.Clone(user.Password)
+	return updateUser(user.ID, func(storedUser *User) error {
+		if !bytes.Equal(storedUser.Password, originalHash) {
+			return fmt.Errorf("password changed; retry with the current password")
+		}
+		storedUser.Password = passwordHash
+		return nil
+	})
 }
 
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
@@ -290,12 +236,6 @@ func HandleRegisterUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusUnauthorized)
 		return
 	}
-	// check if user name exists already
-	_, ok := id_map[creds.Name]
-	if ok {
-		http.Error(w, "Invalid request body, name already taken!", http.StatusUnauthorized)
-		return
-	}
 	if AddUser(creds.Name, creds.Password, creds.Role) == nil {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
@@ -361,8 +301,9 @@ func HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 		Role string `json:"role"`
 	}
-	users := make([]userSummary, 0, len(user_map))
-	for _, user := range user_map {
+	userSnapshots := allUserSnapshots()
+	users := make([]userSummary, 0, len(userSnapshots))
+	for _, user := range userSnapshots {
 		users = append(users, userSummary{
 			ID:   user.ID,
 			Name: user.Name,
@@ -453,23 +394,28 @@ func CheckUserSessionToken(user *User) bool {
 }
 
 func CheckSessionToken(token uint64) bool {
+	_, ok := userIDFromToken(token)
+	return ok
+}
+
+func userIDFromToken(token uint64) (int, bool) {
 	sessionMu.Lock()
 	defer sessionMu.Unlock()
-	t, ok := token_map[token]
+	userID, ok := token_map[token]
 	if ok {
-		session, ok := user_sessions[t]
+		session, ok := user_sessions[userID]
 		if !ok {
-			return false
+			return 0, false
 		}
 		now := time.Now()
 		if now.After(session.Expiration) {
 			delete(token_map, session.Token)
-			delete(user_sessions, t)
-			return false
+			delete(user_sessions, userID)
+			return 0, false
 		}
-		return true
+		return userID, true
 	}
-	return false
+	return 0, false
 }
 
 // just not gonna worry abt collisions such a low chance
@@ -488,11 +434,11 @@ func GetUserSessionCookie(user *User) uint64 {
 }
 
 func GetUserFromToken(token uint64) *User {
-	id, ok := token_map[token]
+	id, ok := userIDFromToken(token)
 	if !ok {
 		return &User{ID: -1}
 	}
-	user, ok := user_map[id]
+	user, ok := userSnapshotByID(id)
 	if !ok {
 		return &User{ID: -1}
 	}
@@ -500,10 +446,6 @@ func GetUserFromToken(token uint64) *User {
 }
 
 func UserExists(name string) bool {
-	_, ok := id_map[name]
-	if !ok {
-		return false
-	}
-	_, ok = user_map[id_map[name]]
+	_, ok := userSnapshotByName(name)
 	return ok
 }

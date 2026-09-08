@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
-	"sync/atomic"
 	"time"
 )
 
@@ -47,7 +46,8 @@ func handleGetTodos(w http.ResponseWriter, r *http.Request) {
 }
 
 func addTask(tasks *[]Task, nextTaskID *uint64, name string, date time.Time, complete bool) {
-	task := Task{Name: name, Date: date, Complete: complete, ID: atomic.AddUint64(nextTaskID, 1)}
+	*nextTaskID = *nextTaskID + 1
+	task := Task{Name: name, Date: date, Complete: complete, ID: *nextTaskID}
 	*tasks = append(*tasks, task)
 }
 
@@ -79,9 +79,12 @@ func HandleAddTask(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	addTask(&user.Tasks, &user.NextTaskID, name, date, complete)
-	user_map[user.ID] = *user
-	WriteUsers(user_map)
+	if err := updateUser(user.ID, func(user *User) error {
+		addTask(&user.Tasks, &user.NextTaskID, name, date, complete)
+		return nil
+	}); err != nil {
+		http.Error(w, "Failed to save task", http.StatusInternalServerError)
+	}
 }
 
 func removeTask(tasks *[]Task, id uint64) {
@@ -108,9 +111,12 @@ func HandleRemoveTask(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	removeTask(&user.Tasks, id)
-	user_map[user.ID] = *user
-	WriteUsers(user_map)
+	if err := updateUser(user.ID, func(user *User) error {
+		removeTask(&user.Tasks, id)
+		return nil
+	}); err != nil {
+		http.Error(w, "Failed to save task", http.StatusInternalServerError)
+	}
 }
 
 func editTask(tasks *[]Task, id uint64, name string, date time.Time, complete bool) {
@@ -148,7 +154,10 @@ func HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	editTask(&user.Tasks, id, name, date, complete)
-	user_map[user.ID] = *user
-	WriteUsers(user_map)
+	if err := updateUser(user.ID, func(user *User) error {
+		editTask(&user.Tasks, id, name, date, complete)
+		return nil
+	}); err != nil {
+		http.Error(w, "Failed to save task", http.StatusInternalServerError)
+	}
 }

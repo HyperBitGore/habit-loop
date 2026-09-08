@@ -2,12 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"strconv"
-	"sync/atomic"
 	"time"
 )
+
+var errHabitNotFound = errors.New("habit not found")
 
 type Habit struct {
 	Name        string      `json:"name"`
@@ -46,13 +48,12 @@ func parseHabitCompletions(value string) ([]time.Time, error) {
 	return completions, nil
 }
 
-func persistHabitUser(w http.ResponseWriter, user *User) bool {
-	user_map[user.ID] = *user
-	if err := WriteUsers(user_map); err != nil {
-		http.Error(w, "Failed to save habits", http.StatusInternalServerError)
-		return false
+func writeHabitMutationError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errHabitNotFound) {
+		http.Error(w, "Habit not found", http.StatusNotFound)
+		return
 	}
-	return true
+	http.Error(w, "Failed to save habits", http.StatusInternalServerError)
 }
 
 func HandleGetHabits(w http.ResponseWriter, r *http.Request) {
@@ -75,11 +76,12 @@ func HandleGetHabits(w http.ResponseWriter, r *http.Request) {
 }
 
 func addHabit(habits *[]Habit, nextHabitID *uint64, name string, completions []time.Time) {
+	*nextHabitID = *nextHabitID + 1
 	habit := Habit{
 		Name:        name,
 		Completions: completions,
 		Skips:       []time.Time{},
-		ID:          atomic.AddUint64(nextHabitID, 1),
+		ID:          *nextHabitID,
 	}
 	*habits = append(*habits, habit)
 }
@@ -103,17 +105,23 @@ func HandleAddHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	addHabit(&user.Habits, &user.NextHabitID, name, completions)
-	persistHabitUser(w, user)
+	if err := updateUser(user.ID, func(user *User) error {
+		addHabit(&user.Habits, &user.NextHabitID, name, completions)
+		return nil
+	}); err != nil {
+		writeHabitMutationError(w, err)
+	}
 }
 
-func deleteHabit(habits *[]Habit, id uint64) {
+func deleteHabit(habits *[]Habit, id uint64) bool {
 	idx := slices.IndexFunc(*habits, func(habit Habit) bool {
 		return habit.ID == id
 	})
 	if idx != -1 {
 		*habits = append((*habits)[:idx], (*habits)[idx+1:]...)
+		return true
 	}
+	return false
 }
 
 func HandleDeleteHabit(w http.ResponseWriter, r *http.Request) {
@@ -130,18 +138,26 @@ func HandleDeleteHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	deleteHabit(&user.Habits, id)
-	persistHabitUser(w, user)
+	if err := updateUser(user.ID, func(user *User) error {
+		if !deleteHabit(&user.Habits, id) {
+			return errHabitNotFound
+		}
+		return nil
+	}); err != nil {
+		writeHabitMutationError(w, err)
+	}
 }
 
-func editHabit(habits *[]Habit, id uint64, name string, completions []time.Time) {
+func editHabit(habits *[]Habit, id uint64, name string, completions []time.Time) bool {
 	idx := slices.IndexFunc(*habits, func(habit Habit) bool {
 		return habit.ID == id
 	})
 	if idx != -1 {
 		(*habits)[idx].Name = name
 		(*habits)[idx].Completions = completions
+		return true
 	}
+	return false
 }
 
 func HandleEditHabit(w http.ResponseWriter, r *http.Request) {
@@ -168,8 +184,14 @@ func HandleEditHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	editHabit(&user.Habits, id, name, completions)
-	persistHabitUser(w, user)
+	if err := updateUser(user.ID, func(user *User) error {
+		if !editHabit(&user.Habits, id, name, completions) {
+			return errHabitNotFound
+		}
+		return nil
+	}); err != nil {
+		writeHabitMutationError(w, err)
+	}
 }
 
 func addHabitCompletion(habits *[]Habit, id uint64, date time.Time) bool {
@@ -218,11 +240,14 @@ func HandleCompleteHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if !addHabitCompletion(&user.Habits, completion.HabitID, date) {
-		http.Error(w, "Habit not found", http.StatusNotFound)
-		return
+	if err := updateUser(user.ID, func(user *User) error {
+		if !addHabitCompletion(&user.Habits, completion.HabitID, date) {
+			return errHabitNotFound
+		}
+		return nil
+	}); err != nil {
+		writeHabitMutationError(w, err)
 	}
-	persistHabitUser(w, user)
 }
 
 func removeHabitCompletion(habits *[]Habit, id uint64, date time.Time) bool {
@@ -265,11 +290,14 @@ func HandleUncompleteHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if !removeHabitCompletion(&user.Habits, completion.HabitID, date) {
-		http.Error(w, "Habit not found", http.StatusNotFound)
-		return
+	if err := updateUser(user.ID, func(user *User) error {
+		if !removeHabitCompletion(&user.Habits, completion.HabitID, date) {
+			return errHabitNotFound
+		}
+		return nil
+	}); err != nil {
+		writeHabitMutationError(w, err)
 	}
-	persistHabitUser(w, user)
 }
 
 func addHabitSkip(habits *[]Habit, id uint64, date time.Time) bool {
@@ -318,11 +346,14 @@ func HandleSkipHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if !addHabitSkip(&user.Habits, skip.HabitID, date) {
-		http.Error(w, "Habit not found", http.StatusNotFound)
-		return
+	if err := updateUser(user.ID, func(user *User) error {
+		if !addHabitSkip(&user.Habits, skip.HabitID, date) {
+			return errHabitNotFound
+		}
+		return nil
+	}); err != nil {
+		writeHabitMutationError(w, err)
 	}
-	persistHabitUser(w, user)
 }
 
 func removeHabitSkip(habits *[]Habit, id uint64, date time.Time) bool {
@@ -365,9 +396,12 @@ func HandleUnskipHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if !removeHabitSkip(&user.Habits, skip.HabitID, date) {
-		http.Error(w, "Habit not found", http.StatusNotFound)
-		return
+	if err := updateUser(user.ID, func(user *User) error {
+		if !removeHabitSkip(&user.Habits, skip.HabitID, date) {
+			return errHabitNotFound
+		}
+		return nil
+	}); err != nil {
+		writeHabitMutationError(w, err)
 	}
-	persistHabitUser(w, user)
 }

@@ -3,7 +3,6 @@ package main
 // recieve api requests and send to other api file functions
 
 // TODO
-//	- Concurrency protection around shared tasks state.
 //	- switch to sqlite3
 
 import (
@@ -47,9 +46,8 @@ func adminMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
-	loadedUsers := ReadUsers()
-	if loadedUsers != nil {
-		user_map = loadedUsers
+	if err := LoadUsers(); err != nil {
+		log.Fatal(err)
 	}
 	if !UserExists("admin") {
 		if err := createAdmin(); err != nil {
