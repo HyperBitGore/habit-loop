@@ -1,10 +1,10 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
-	"slices"
 	"strconv"
 	"time"
 )
@@ -18,23 +18,83 @@ type Habit struct {
 	ID          uint64      `json:"id"`
 }
 
-func requestUser(w http.ResponseWriter, r *http.Request) *User {
-	cookie, err := r.Cookie("auth")
-	if err != nil || cookie.Value == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return nil
-	}
-	token, err := strconv.ParseUint(cookie.Value, 10, 64)
+func getUserHabits(db *sql.DB, user *User) ([]Habit, error) {
+	rows, err := db.Query(`
+		SELECT id, name
+		FROM habits
+		WHERE user_name = ?
+		ORDER BY name, id
+	`, user.Name)
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return nil
+		return nil, err
 	}
-	user := GetUserFromToken(token)
-	if user.ID == -1 {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return nil
+	defer rows.Close()
+
+	habits := make([]Habit, 0)
+	for rows.Next() {
+		var habit Habit
+
+		if err := rows.Scan(&habit.ID, &habit.Name); err != nil {
+			return nil, err
+		}
+
+		habit.Completions, err = getHabitDates(db, `
+			SELECT id, date
+			FROM completions
+			WHERE habit_id = ?
+			ORDER BY date, id
+		`, habit.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		habit.Skips, err = getHabitDates(db, `
+			SELECT id, date
+			FROM skips
+			WHERE habit_id = ?
+			ORDER BY date, id
+		`, habit.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		habits = append(habits, habit)
 	}
-	return user
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return habits, nil
+}
+
+func getHabitDates(db *sql.DB, query string, habitID uint64) ([]time.Time, error) {
+	rows, err := db.Query(query, habitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	dates := make([]time.Time, 0)
+	for rows.Next() {
+		var (
+			id   int
+			date string
+		)
+		if err := rows.Scan(&id, &date); err != nil {
+			return nil, err
+		}
+
+		parsedDate, err := parseTaskDate(date)
+		if err != nil {
+			return nil, err
+		}
+		dates = append(dates, parsedDate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return dates, nil
 }
 
 func parseHabitCompletions(value string) ([]time.Time, error) {
@@ -65,25 +125,15 @@ func HandleGetHabits(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	habits := user.Habits
-	if habits == nil {
-		habits = []Habit{}
+	habits, err := getUserHabits(database, user)
+	if err != nil {
+		http.Error(w, "Failed to load habits", http.StatusInternalServerError)
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(habits); err != nil {
 		http.Error(w, "Failed to encode habits", http.StatusInternalServerError)
 	}
-}
-
-func addHabit(habits *[]Habit, nextHabitID *uint64, name string, completions []time.Time) {
-	*nextHabitID = *nextHabitID + 1
-	habit := Habit{
-		Name:        name,
-		Completions: completions,
-		Skips:       []time.Time{},
-		ID:          *nextHabitID,
-	}
-	*habits = append(*habits, habit)
 }
 
 func HandleAddHabit(w http.ResponseWriter, r *http.Request) {
@@ -105,23 +155,59 @@ func HandleAddHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if err := updateUser(user.ID, func(user *User) error {
-		addHabit(&user.Habits, &user.NextHabitID, name, completions)
-		return nil
-	}); err != nil {
+
+	tx, err := database.Begin()
+	if err != nil {
 		writeHabitMutationError(w, err)
+		return
 	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(
+		"INSERT INTO habits (user_name, name) VALUES (?, ?)",
+		user.Name,
+		name,
+	)
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	habitID, err := result.LastInsertId()
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	for _, completion := range completions {
+		_, err = tx.Exec(
+			"INSERT INTO completions (habit_id, date) VALUES (?, ?)",
+			habitID,
+			completion.Format("2006-01-02"),
+		)
+		if err != nil {
+			writeHabitMutationError(w, err)
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
 }
 
-func deleteHabit(habits *[]Habit, id uint64) bool {
-	idx := slices.IndexFunc(*habits, func(habit Habit) bool {
-		return habit.ID == id
-	})
-	if idx != -1 {
-		*habits = append((*habits)[:idx], (*habits)[idx+1:]...)
-		return true
-	}
-	return false
+type habitQueryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func habitExists(db habitQueryer, userName string, id uint64) (bool, error) {
+	var exists bool
+	err := db.QueryRow(
+		"SELECT EXISTS(SELECT 1 FROM habits WHERE id = ? AND user_name = ?)",
+		id,
+		userName,
+	).Scan(&exists)
+	return exists, err
 }
 
 func HandleDeleteHabit(w http.ResponseWriter, r *http.Request) {
@@ -138,26 +224,41 @@ func HandleDeleteHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if err := updateUser(user.ID, func(user *User) error {
-		if !deleteHabit(&user.Habits, id) {
-			return errHabitNotFound
-		}
-		return nil
-	}); err != nil {
-		writeHabitMutationError(w, err)
-	}
-}
 
-func editHabit(habits *[]Habit, id uint64, name string, completions []time.Time) bool {
-	idx := slices.IndexFunc(*habits, func(habit Habit) bool {
-		return habit.ID == id
-	})
-	if idx != -1 {
-		(*habits)[idx].Name = name
-		(*habits)[idx].Completions = completions
-		return true
+	tx, err := database.Begin()
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
 	}
-	return false
+	defer tx.Rollback()
+
+	exists, err := habitExists(tx, user.Name, id)
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if !exists {
+		writeHabitMutationError(w, errHabitNotFound)
+		return
+	}
+	if _, err := tx.Exec("DELETE FROM completions WHERE habit_id = ?", id); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if _, err := tx.Exec("DELETE FROM skips WHERE habit_id = ?", id); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if _, err := tx.Exec("DELETE FROM habits WHERE id = ?", id); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func HandleEditHabit(w http.ResponseWriter, r *http.Request) {
@@ -184,37 +285,51 @@ func HandleEditHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if err := updateUser(user.ID, func(user *User) error {
-		if !editHabit(&user.Habits, id, name, completions) {
-			return errHabitNotFound
-		}
-		return nil
-	}); err != nil {
-		writeHabitMutationError(w, err)
-	}
-}
 
-func addHabitCompletion(habits *[]Habit, id uint64, date time.Time) bool {
-	idx := slices.IndexFunc(*habits, func(habit Habit) bool {
-		return habit.ID == id
-	})
-	if idx == -1 {
-		return false
+	tx, err := database.Begin()
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
 	}
-	dateValue := date.Format("2006-01-02")
-	for _, completion := range (*habits)[idx].Completions {
-		if completion.Format("2006-01-02") == dateValue {
-			return true
+	defer tx.Rollback()
+
+	exists, err := habitExists(tx, user.Name, id)
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if !exists {
+		writeHabitMutationError(w, errHabitNotFound)
+		return
+	}
+	if _, err := tx.Exec(
+		"UPDATE habits SET name = ? WHERE id = ?",
+		name,
+		id,
+	); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if _, err := tx.Exec("DELETE FROM completions WHERE habit_id = ?", id); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	for _, completion := range completions {
+		if _, err := tx.Exec(
+			"INSERT INTO completions (habit_id, date) VALUES (?, ?)",
+			id,
+			completion.Format("2006-01-02"),
+		); err != nil {
+			writeHabitMutationError(w, err)
+			return
 		}
 	}
-	(*habits)[idx].Skips = slices.DeleteFunc(
-		(*habits)[idx].Skips,
-		func(skip time.Time) bool {
-			return skip.Format("2006-01-02") == dateValue
-		},
-	)
-	(*habits)[idx].Completions = append((*habits)[idx].Completions, date)
-	return true
+	if err := tx.Commit(); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func HandleCompleteHabit(w http.ResponseWriter, r *http.Request) {
@@ -240,31 +355,47 @@ func HandleCompleteHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if err := updateUser(user.ID, func(user *User) error {
-		if !addHabitCompletion(&user.Habits, completion.HabitID, date) {
-			return errHabitNotFound
-		}
-		return nil
-	}); err != nil {
-		writeHabitMutationError(w, err)
-	}
-}
 
-func removeHabitCompletion(habits *[]Habit, id uint64, date time.Time) bool {
-	idx := slices.IndexFunc(*habits, func(habit Habit) bool {
-		return habit.ID == id
-	})
-	if idx == -1 {
-		return false
+	tx, err := database.Begin()
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	exists, err := habitExists(tx, user.Name, completion.HabitID)
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if !exists {
+		writeHabitMutationError(w, errHabitNotFound)
+		return
 	}
 	dateValue := date.Format("2006-01-02")
-	(*habits)[idx].Completions = slices.DeleteFunc(
-		(*habits)[idx].Completions,
-		func(completion time.Time) bool {
-			return completion.Format("2006-01-02") == dateValue
-		},
-	)
-	return true
+	if _, err := tx.Exec(
+		"DELETE FROM skips WHERE habit_id = ? AND date = ?",
+		completion.HabitID,
+		dateValue,
+	); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if _, err := tx.Exec(
+		"INSERT INTO completions (habit_id, date) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM completions WHERE habit_id = ? AND date = ?)",
+		completion.HabitID,
+		dateValue,
+		completion.HabitID,
+		dateValue,
+	); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func HandleUncompleteHabit(w http.ResponseWriter, r *http.Request) {
@@ -290,37 +421,26 @@ func HandleUncompleteHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if err := updateUser(user.ID, func(user *User) error {
-		if !removeHabitCompletion(&user.Habits, completion.HabitID, date) {
-			return errHabitNotFound
-		}
-		return nil
-	}); err != nil {
-		writeHabitMutationError(w, err)
-	}
-}
 
-func addHabitSkip(habits *[]Habit, id uint64, date time.Time) bool {
-	idx := slices.IndexFunc(*habits, func(habit Habit) bool {
-		return habit.ID == id
-	})
-	if idx == -1 {
-		return false
+	exists, err := habitExists(database, user.Name, completion.HabitID)
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
 	}
-	dateValue := date.Format("2006-01-02")
-	for _, skip := range (*habits)[idx].Skips {
-		if skip.Format("2006-01-02") == dateValue {
-			return true
-		}
+	if !exists {
+		writeHabitMutationError(w, errHabitNotFound)
+		return
 	}
-	(*habits)[idx].Completions = slices.DeleteFunc(
-		(*habits)[idx].Completions,
-		func(completion time.Time) bool {
-			return completion.Format("2006-01-02") == dateValue
-		},
-	)
-	(*habits)[idx].Skips = append((*habits)[idx].Skips, date)
-	return true
+	if _, err := database.Exec(
+		"DELETE FROM completions WHERE habit_id = ? AND date = ?",
+		completion.HabitID,
+		date.Format("2006-01-02"),
+	); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func HandleSkipHabit(w http.ResponseWriter, r *http.Request) {
@@ -346,31 +466,47 @@ func HandleSkipHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if err := updateUser(user.ID, func(user *User) error {
-		if !addHabitSkip(&user.Habits, skip.HabitID, date) {
-			return errHabitNotFound
-		}
-		return nil
-	}); err != nil {
-		writeHabitMutationError(w, err)
-	}
-}
 
-func removeHabitSkip(habits *[]Habit, id uint64, date time.Time) bool {
-	idx := slices.IndexFunc(*habits, func(habit Habit) bool {
-		return habit.ID == id
-	})
-	if idx == -1 {
-		return false
+	tx, err := database.Begin()
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	exists, err := habitExists(tx, user.Name, skip.HabitID)
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if !exists {
+		writeHabitMutationError(w, errHabitNotFound)
+		return
 	}
 	dateValue := date.Format("2006-01-02")
-	(*habits)[idx].Skips = slices.DeleteFunc(
-		(*habits)[idx].Skips,
-		func(skip time.Time) bool {
-			return skip.Format("2006-01-02") == dateValue
-		},
-	)
-	return true
+	if _, err := tx.Exec(
+		"DELETE FROM completions WHERE habit_id = ? AND date = ?",
+		skip.HabitID,
+		dateValue,
+	); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if _, err := tx.Exec(
+		"INSERT INTO skips (habit_id, date) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM skips WHERE habit_id = ? AND date = ?)",
+		skip.HabitID,
+		dateValue,
+		skip.HabitID,
+		dateValue,
+	); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func HandleUnskipHabit(w http.ResponseWriter, r *http.Request) {
@@ -396,12 +532,24 @@ func HandleUnskipHabit(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if err := updateUser(user.ID, func(user *User) error {
-		if !removeHabitSkip(&user.Habits, skip.HabitID, date) {
-			return errHabitNotFound
-		}
-		return nil
-	}); err != nil {
+
+	exists, err := habitExists(database, user.Name, skip.HabitID)
+	if err != nil {
 		writeHabitMutationError(w, err)
+		return
 	}
+	if !exists {
+		writeHabitMutationError(w, errHabitNotFound)
+		return
+	}
+	if _, err := database.Exec(
+		"DELETE FROM skips WHERE habit_id = ? AND date = ?",
+		skip.HabitID,
+		date.Format("2006-01-02"),
+	); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

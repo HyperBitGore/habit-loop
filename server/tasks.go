@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,6 +17,40 @@ type Task struct {
 	ID       uint64    `json:"id"`
 }
 
+func getUserTasks(db *sql.DB, user *User) ([]Task, error) {
+	rows, err := db.Query(`
+		SELECT id, name, date, complete
+		FROM todos
+		WHERE user_name = ?
+		ORDER BY date, id
+	`, user.Name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tasks := make([]Task, 0)
+	for rows.Next() {
+		var task Task
+		var date string
+
+		if err := rows.Scan(&task.ID, &task.Name, &date, &task.Complete); err != nil {
+			return nil, err
+		}
+		task.Date, err = parseTaskDate(date)
+		if err != nil {
+			return nil, fmt.Errorf("parse task %d date: %w", task.ID, err)
+		}
+
+		tasks = append(tasks, task)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return tasks, nil
+}
+
 func handleGetTodos(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Recieved a todo list request")
 	if r.Method != http.MethodGet {
@@ -26,7 +61,11 @@ func handleGetTodos(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	tasks := user.Tasks
+	tasks, err := getUserTasks(database, user)
+	if err != nil {
+		http.Error(w, "Failed to load tasks", http.StatusInternalServerError)
+		return
+	}
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -55,7 +94,10 @@ func parseTaskDate(value string) (time.Time, error) {
 	if date, err := time.Parse(time.RFC3339, value); err == nil {
 		return date, nil
 	}
-	return time.Parse("2006-01-02 15:04:05", value)
+	if date, err := time.Parse("2006-01-02 15:04:05", value); err == nil {
+		return date, nil
+	}
+	return time.Parse("2006-01-02", value)
 }
 
 func HandleAddTask(w http.ResponseWriter, r *http.Request) {
@@ -79,12 +121,17 @@ func HandleAddTask(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if err := updateUser(user.ID, func(user *User) error {
-		addTask(&user.Tasks, &user.NextTaskID, name, date, complete)
-		return nil
-	}); err != nil {
+
+	_, err = database.Exec(`
+		INSERT INTO todos (user_name, name, date, complete)
+		VALUES (?, ?, ?, ?)
+	`, user.Name, name, date.Format(time.RFC3339), complete)
+	if err != nil {
 		http.Error(w, "Failed to save task", http.StatusInternalServerError)
+		return
 	}
+
+	w.WriteHeader(http.StatusCreated)
 }
 
 func removeTask(tasks *[]Task, id uint64) {
@@ -111,12 +158,28 @@ func HandleRemoveTask(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if err := updateUser(user.ID, func(user *User) error {
-		removeTask(&user.Tasks, id)
-		return nil
-	}); err != nil {
+
+	result, err := database.Exec(
+		"DELETE FROM todos WHERE id = ? AND user_name = ?",
+		id,
+		user.Name,
+	)
+	if err != nil {
 		http.Error(w, "Failed to save task", http.StatusInternalServerError)
+		return
 	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		http.Error(w, "Failed to verify task deletion", http.StatusInternalServerError)
+		return
+	}
+	if rowsAffected == 0 {
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func editTask(tasks *[]Task, id uint64, name string, date time.Time, complete bool) {
@@ -154,10 +217,26 @@ func HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	if err := updateUser(user.ID, func(user *User) error {
-		editTask(&user.Tasks, id, name, date, complete)
-		return nil
-	}); err != nil {
+
+	result, err := database.Exec(`
+		UPDATE todos
+		SET name = ?, date = ?, complete = ?
+		WHERE id = ? AND user_name = ?
+	`, name, date.Format(time.RFC3339), complete, id, user.Name)
+	if err != nil {
 		http.Error(w, "Failed to save task", http.StatusInternalServerError)
+		return
 	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		http.Error(w, "Failed to verify task update", http.StatusInternalServerError)
+		return
+	}
+	if rowsAffected == 0 {
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

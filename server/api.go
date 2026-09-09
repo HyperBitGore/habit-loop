@@ -3,17 +3,16 @@ package main
 // recieve api requests and send to other api file functions
 
 // TODO
-//	- switch to sqlite3
-//		- users indexed by name since we only allow unique names (drop id)
-//		- remove mutexing on user data access?
 //	- allow user registration
 //		- use emails?
+//	- tokens on sql db?
 //	- write tests
 //	- implement security fixes
 //	- cloudflare turnstile
 
 import (
 	"bufio"
+	"database/sql"
 	"fmt"
 	"golang.org/x/term"
 	"log"
@@ -53,11 +52,13 @@ func adminMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
-	if err := LoadUsers(); err != nil {
+	InitDB()
+	adminExists, err := UserExists(database, "admin")
+	if err != nil {
 		log.Fatal(err)
 	}
-	if !UserExists("admin") {
-		if err := createAdmin(); err != nil {
+	if !adminExists {
+		if err := createAdmin(database); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -122,7 +123,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8081", mux))
 }
 
-func createAdmin() error {
+func createAdmin(db *sql.DB) error {
 	scanner := bufio.NewScanner(os.Stdin)
 
 	fmt.Print("Input admin name: ")
@@ -139,5 +140,5 @@ func createAdmin() error {
 	}
 	fmt.Println()
 
-	return AddUser(adminName, string(adminPassword), "admin")
+	return AddUser(db, adminName, string(adminPassword), "admin")
 }
