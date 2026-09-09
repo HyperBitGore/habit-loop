@@ -4,10 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
 	"strings"
-	"golang.org/x/crypto/bcrypt"
 )
 
 const usersDir = "users"
@@ -93,7 +93,13 @@ func AddUser(db *sql.DB, name string, password string, role string) error {
 }
 
 func DeleteUser(db *sql.DB, name string, id int) error {
-	result, err := db.Exec(
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start deleting user %q: %w", name, err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(
 		"DELETE FROM users WHERE id = ? AND name = ?",
 		id,
 		name,
@@ -110,9 +116,16 @@ func DeleteUser(db *sql.DB, name string, id int) error {
 		return fmt.Errorf("user %q with ID %d doesn't exist", name, id)
 	}
 
-	if _, err := database.Exec("DELETE FROM sessions WHERE user_id = ?", id); err != nil {
+	if _, err := tx.Exec("DELETE FROM sessions WHERE user_id = ?", id); err != nil {
 		return fmt.Errorf("failed to delete sessions for user %d: %w", id, err)
 	}
+	if _, err := tx.Exec("DELETE FROM email_verifications WHERE user_id = ?", id); err != nil {
+		return fmt.Errorf("failed to delete verification records for user %d: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit deletion of user %q: %w", name, err)
+	}
+
 	return nil
 }
 

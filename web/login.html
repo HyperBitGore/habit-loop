@@ -22,7 +22,33 @@
 
         <p id="login-error" class="auth-error" role="alert" hidden></p>
         <button type="submit" id="login-button">Log in</button>
+        <button type="button" id="open-registration-button" class="auth-secondary">Create an account</button>
       </form>
+
+      <div id="registration-popup" class="todo-popup-overlay" hidden>
+        <section class="todo-popup" role="dialog" aria-modal="true" aria-labelledby="registration-title">
+          <h2 id="registration-title">Create an account</h2>
+          <form id="registration-form">
+            <label for="registration-name">Name</label>
+            <input id="registration-name" name="name" type="text" autocomplete="username" required />
+
+            <label for="registration-email">Email</label>
+            <input id="registration-email" name="email" type="email" autocomplete="email" required />
+
+            <label for="registration-password">Password</label>
+            <input id="registration-password" name="password" type="password" autocomplete="new-password" minlength="8" required />
+
+            <label for="registration-password-confirmation">Confirm password</label>
+            <input id="registration-password-confirmation" name="password-confirmation" type="password" autocomplete="new-password" minlength="8" required />
+
+            <p id="registration-error" class="auth-error" role="alert" hidden></p>
+            <div class="popup-actions">
+              <button type="submit">Register</button>
+              <button type="button" id="close-registration-button" class="auth-secondary">Cancel</button>
+            </div>
+          </form>
+        </section>
+      </div>
     </main>
   </body>
 </html>

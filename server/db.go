@@ -33,7 +33,9 @@ func InitDB() {
 			password_hash TEXT NOT NULL,
             next_task_id INTEGER NOT NULL DEFAULT 0,
 			role TEXT NOT NULL,
-			next_habit_id INTEGER NOT NULL DEFAULT 0
+			next_habit_id INTEGER NOT NULL DEFAULT 0,
+			email TEXT,
+			email_verified BOOLEAN NOT NULL DEFAULT FALSE
         )
     `)
 	if err != nil {
@@ -74,6 +76,16 @@ func InitDB() {
 			token_hash BLOB PRIMARY KEY,
             user_id INTEGER NOT NULL,
             expires_at DATETIME NOT NULL
+        )
+    `)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS email_verifications (
+			token_hash BLOB PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			expires_at DATETIME NOT NULL
         )
     `)
 	if err != nil {

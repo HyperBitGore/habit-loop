@@ -315,7 +315,7 @@ li:focus-visible {
 
 .user-list-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 8rem auto;
+  grid-template-columns: minmax(0, 1fr) 8rem auto auto;
   gap: 0.65rem;
   align-items: center;
 }
@@ -397,4 +397,22 @@ li:focus-visible {
 .auth-card button:hover {
   border-color: #1d2e4e;
   background: #1d2e4e;
+}
+
+.auth-secondary {
+  border-color: #c7ced9;
+  color: #526581;
+  background: #ffffff;
+}
+
+.auth-secondary:hover {
+  border-color: #526581;
+  background: #f7f9fb;
+}
+
+.popup-actions {
+  display: flex;
+  gap: 0.65rem;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
 }

@@ -1,10 +1,11 @@
 import { todoOpen, todoClose, fetchTodos, addTodo, todoDetailClose, deleteSelectedTodo, saveSelectedTodo } from "./todos.js";
 import {
     editUser,
+    deleteUser,
     getCurrentUser,
     getUsers,
     logout,
-    registerUser,
+    createUser,
     setPassword
 } from "./users.js";
 import {
@@ -93,6 +94,23 @@ async function renderUsers () {
         saveButton.type = "submit";
         saveButton.textContent = "Save";
 
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.textContent = "Delete";
+        deleteButton.addEventListener("click", async () => {
+            if (!window.confirm(`Delete user "${user.name}"?`)) {
+                return;
+            }
+            userListError.hidden = true;
+            try {
+                await deleteUser(user.id, user.name);
+                await renderUsers();
+            } catch (error) {
+                userListError.textContent = error.message;
+                userListError.hidden = false;
+            }
+        });
+
         form.addEventListener("submit", async (event) => {
             event.preventDefault();
             userListError.hidden = true;
@@ -105,7 +123,7 @@ async function renderUsers () {
             }
         });
 
-        form.append(nameInput, roleSelect, saveButton);
+        form.append(nameInput, roleSelect, saveButton, deleteButton);
         userList.appendChild(form);
     }
 }
@@ -254,7 +272,7 @@ userForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(userForm);
     try {
-        await registerUser(
+        await createUser(
             formData.get("name"),
             formData.get("password"),
             formData.get("role")

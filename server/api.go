@@ -3,21 +3,23 @@ package main
 // recieve api requests and send to other api file functions
 
 // TODO
-//	- allow user registration
-//		- use resend cause we get 3k a month
-//		- need privacy policy, terms, cookie notice?, email policy
+//	- disallow login till user verified, unless admin
+//		- unverified users in seperate table
+//	- need privacy policy, terms, cookie notice?, email policy
+//	- user personal editing page
 //	- write tests
 //	- implement security fixes
+//	- change css to actually look good
 //	- cloudflare turnstile
 
 import (
 	"bufio"
 	"database/sql"
 	"fmt"
+	"golang.org/x/term"
 	"log"
 	"net/http"
 	"os"
-	"golang.org/x/term"
 )
 
 func authMiddleware(next http.Handler) http.Handler {
@@ -78,6 +80,8 @@ func main() {
 	))
 	mux.HandleFunc("/api/login", HandleLogin)
 	mux.HandleFunc("/api/logout", HandleLogout)
+	mux.HandleFunc("/api/create_account", HandleCreateAccount)
+	mux.HandleFunc("/api/verify-email", HandleVerifyEmail)
 	mux.Handle("/api/register_user", adminMiddleware(
 		http.HandlerFunc(HandleRegisterUser),
 	))
@@ -86,6 +90,9 @@ func main() {
 	))
 	mux.Handle("/api/edit_user", adminMiddleware(
 		http.HandlerFunc(HandleEditUser),
+	))
+	mux.Handle("/api/delete_user", adminMiddleware(
+		http.HandlerFunc(HandleDeleteUser),
 	))
 	mux.Handle("/api/set_password", authMiddleware(
 		http.HandlerFunc(HandleSetPassword),
