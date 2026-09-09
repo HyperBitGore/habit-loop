@@ -4,8 +4,8 @@ package main
 
 // TODO
 //	- allow user registration
-//		- use emails?
-//	- tokens on sql db?
+//		- use resend cause we get 3k a month
+//		- need privacy policy, terms, cookie notice?, email policy
 //	- write tests
 //	- implement security fixes
 //	- cloudflare turnstile
@@ -14,11 +14,10 @@ import (
 	"bufio"
 	"database/sql"
 	"fmt"
-	"golang.org/x/term"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
+	"golang.org/x/term"
 )
 
 func authMiddleware(next http.Handler) http.Handler {
@@ -28,8 +27,7 @@ func authMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		token, err := strconv.ParseUint(cookie.Value, 10, 64)
-		if err != nil || !CheckSessionToken(token) {
+		if !CheckSessionToken(cookie.Value) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}

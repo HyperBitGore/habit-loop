@@ -69,4 +69,14 @@ func InitDB() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	_, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS sessions (
+			token_hash BLOB PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            expires_at DATETIME NOT NULL
+        )
+    `)
+	if err != nil {
+		log.Fatal(err)
+	}
 }

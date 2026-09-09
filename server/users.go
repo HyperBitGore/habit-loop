@@ -1,32 +1,17 @@
 package main
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
-	"sync"
-	"time"
-
 	"golang.org/x/crypto/bcrypt"
 )
 
-type UserSession struct {
-	Token      uint64    `json:"token"`
-	Expiration time.Time `json:"expiration"`
-}
-
 const usersDir = "users"
 const sessionTimeMinutes = 30
-
-var user_sessions = map[int]UserSession{}
-var token_map = map[uint64]int{}
-var sessionMu sync.Mutex
 
 type User struct {
 	Name        string `json:"name"`
@@ -54,12 +39,7 @@ func requestUser(w http.ResponseWriter, r *http.Request) *User {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return nil
 	}
-	token, err := strconv.ParseUint(cookie.Value, 10, 64)
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return nil
-	}
-	user, err := GetUserFromToken(token)
+	user, err := GetUserFromToken(cookie.Value)
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return nil
@@ -130,12 +110,9 @@ func DeleteUser(db *sql.DB, name string, id int) error {
 		return fmt.Errorf("user %q with ID %d doesn't exist", name, id)
 	}
 
-	sessionMu.Lock()
-	if session, ok := user_sessions[id]; ok {
-		delete(token_map, session.Token)
-		delete(user_sessions, id)
+	if _, err := database.Exec("DELETE FROM sessions WHERE user_id = ?", id); err != nil {
+		return fmt.Errorf("failed to delete sessions for user %d: %w", id, err)
 	}
-	sessionMu.Unlock()
 	return nil
 }
 
@@ -250,9 +227,13 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	err = bcrypt.CompareHashAndPassword(user.Password, []byte(creds.Password))
 	if err == nil {
-		token := GetUserSessionCookie(user)
-		token_cookie := http.Cookie{Name: "auth", Value: strconv.FormatUint(token, 10), HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode, Path: "/", MaxAge: sessionTimeMinutes * 60}
-		http.SetCookie(w, &token_cookie)
+		token, err := CreateSessionToken(database, user.ID)
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		tokenCookie := http.Cookie{Name: "auth", Value: token, HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode, Path: "/", MaxAge: sessionTimeMinutes * 60}
+		http.SetCookie(w, &tokenCookie)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 		return
@@ -277,14 +258,9 @@ func HandleLogout(w http.ResponseWriter, r *http.Request) {
 	token_cookie := http.Cookie{Name: "auth", Value: "", HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode, Path: "/", MaxAge: -1}
 	http.SetCookie(w, &token_cookie)
 
-	token, err := strconv.ParseUint(cookie.Value, 10, 64)
-	if err == nil {
-		sessionMu.Lock()
-		if userID, ok := token_map[token]; ok {
-			delete(token_map, token)
-			delete(user_sessions, userID)
-		}
-		sessionMu.Unlock()
+	if err := DeleteSessionToken(cookie.Value); err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
@@ -445,86 +421,6 @@ func HandleCurrentUser(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		http.Error(w, "Failed to encode current user", http.StatusInternalServerError)
 	}
-}
-
-func new_token() uint64 {
-	b := make([]byte, 8)
-	_, err := rand.Read(b)
-	if err != nil {
-		panic(err)
-	}
-	token := binary.BigEndian.Uint64(b)
-	return token
-}
-
-// caller must hold sessionMu
-func checkUserSessionTokenLocked(user *User) bool {
-	session, ok := user_sessions[user.ID]
-	if !ok {
-		return false
-	}
-	now := time.Now()
-	if now.Before(session.Expiration) {
-		return true
-	}
-	delete(token_map, session.Token)
-	delete(user_sessions, user.ID)
-	return false
-}
-
-func CheckUserSessionToken(user *User) bool {
-	sessionMu.Lock()
-	defer sessionMu.Unlock()
-	return checkUserSessionTokenLocked(user)
-}
-
-func CheckSessionToken(token uint64) bool {
-	_, ok := userIDFromToken(token)
-	return ok
-}
-
-func userIDFromToken(token uint64) (int, bool) {
-	sessionMu.Lock()
-	defer sessionMu.Unlock()
-	userID, ok := token_map[token]
-	if ok {
-		session, ok := user_sessions[userID]
-		if !ok {
-			return 0, false
-		}
-		now := time.Now()
-		if now.After(session.Expiration) {
-			delete(token_map, session.Token)
-			delete(user_sessions, userID)
-			return 0, false
-		}
-		return userID, true
-	}
-	return 0, false
-}
-
-// just not gonna worry abt collisions such a low chance
-func GetUserSessionCookie(user *User) uint64 {
-	sessionMu.Lock()
-	defer sessionMu.Unlock()
-	if checkUserSessionTokenLocked(user) {
-		return user_sessions[user.ID].Token
-	}
-	now := time.Now()
-	token := new_token()
-	expire := now.Add(sessionTimeMinutes * time.Minute)
-	user_sessions[user.ID] = UserSession{Token: token, Expiration: expire}
-	token_map[token] = user.ID
-	return token
-}
-
-func GetUserFromToken(token uint64) (*User, error) {
-	id, ok := userIDFromToken(token)
-	if !ok {
-		return nil, nil
-	}
-
-	return getUserByID(database, id)
 }
 
 func getUserByID(db *sql.DB, id int) (*User, error) {
