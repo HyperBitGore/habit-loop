@@ -1,12 +1,6 @@
 import { todoOpen, todoClose, fetchTodos, addTodo, todoDetailClose, deleteSelectedTodo, saveSelectedTodo } from "./todos.js";
-import {
-    editUser,
-    deleteUser,
-    getCurrentUser,
-    getUsers,
-    logout,
-    createUser
-} from "./users.js";
+import { getCurrentUser, logout } from "./users.js";
+import { initializeDatePicker } from "./date-picker.js";
 import {
     addHabit,
     changeHabitCalendarMonth,
@@ -38,6 +32,27 @@ function dateTimeForSelectedDate(dateValue) {
     return `${dateValue} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
+function updateSelectedDayHeading (dateValue) {
+    const heading = document.querySelector("#selected-day-heading");
+    const selectedDate = new Date(`${dateValue}T00:00:00`);
+    const today = new Date();
+    const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+
+    if (dateValue === localDateString(today)) {
+        heading.textContent = "Today";
+    } else if (dateValue === localDateString(tomorrow)) {
+        heading.textContent = "Tomorrow";
+    } else if (dateValue === localDateString(yesterday)) {
+        heading.textContent = "Yesterday";
+    } else {
+        heading.textContent = new Intl.DateTimeFormat(undefined, {
+            month: "long",
+            day: "numeric"
+        }).format(selectedDate);
+    }
+}
+
 const todoOpenButton = document.querySelector("#add-todo");
 const habitOpenButton = document.querySelector("#add-habit");
 const habitPopup = document.querySelector("#habit-popup");
@@ -51,79 +66,47 @@ const habitDetailError = document.querySelector("#habit-detail-error");
 const habitCalendarPreviousButton = document.querySelector("#habit-calendar-previous");
 const habitCalendarNextButton = document.querySelector("#habit-calendar-next");
 const taskDateInput = document.querySelector("#task-date");
-const createUserButton = document.querySelector("#create-user");
-const manageUsersButton = document.querySelector("#manage-users");
-const userPopup = document.querySelector("#user-popup");
-const userCloseButton = document.querySelector("#user-close");
-const userForm = document.querySelector("#user-form");
-const userCreateError = document.querySelector("#user-create-error");
-const userListPopup = document.querySelector("#user-list-popup");
-const userListCloseButton = document.querySelector("#user-list-close");
-const userList = document.querySelector("#user-list");
-const userListError = document.querySelector("#user-list-error");
+const settingsToggle = document.querySelector("#settings-toggle");
+const settingsDropdown = document.querySelector("#settings-dropdown");
+const adminLink = document.querySelector("#admin-link");
 
-async function renderUsers () {
-    const users = await getUsers();
-    userList.replaceChildren();
-    for (const user of users) {
-        const form = document.createElement("form");
-        form.className = "user-list-row";
-
-        const nameInput = document.createElement("input");
-        nameInput.type = "text";
-        nameInput.value = user.name;
-        nameInput.setAttribute("aria-label", `Username for ${user.name}`);
-        nameInput.required = true;
-
-        const roleSelect = document.createElement("select");
-        roleSelect.setAttribute("aria-label", `Role for ${user.name}`);
-        for (const role of ["user", "admin"]) {
-            const option = document.createElement("option");
-            option.value = role;
-            option.textContent = role === "admin" ? "Admin" : "User";
-            option.selected = user.role === role;
-            roleSelect.appendChild(option);
-        }
-
-        const saveButton = document.createElement("button");
-        saveButton.type = "submit";
-        saveButton.textContent = "Save";
-
-        const deleteButton = document.createElement("button");
-        deleteButton.type = "button";
-        deleteButton.textContent = "Delete";
-        deleteButton.addEventListener("click", async () => {
-            if (!window.confirm(`Delete user "${user.name}"?`)) {
-                return;
-            }
-            userListError.hidden = true;
-            try {
-                await deleteUser(user.id, user.name);
-                await renderUsers();
-            } catch (error) {
-                userListError.textContent = error.message;
-                userListError.hidden = false;
-            }
-        });
-
-        form.addEventListener("submit", async (event) => {
-            event.preventDefault();
-            userListError.hidden = true;
-            try {
-                await editUser(user.id, nameInput.value, roleSelect.value);
-                await renderUsers();
-            } catch (error) {
-                userListError.textContent = error.message;
-                userListError.hidden = false;
-            }
-        });
-
-        form.append(nameInput, roleSelect, saveButton, deleteButton);
-        userList.appendChild(form);
-    }
+function closeSettingsMenu () {
+    settingsDropdown.hidden = true;
+    settingsToggle.setAttribute("aria-expanded", "false");
 }
 
+settingsToggle.addEventListener("click", () => {
+    const willOpen = settingsDropdown.hidden;
+    settingsDropdown.hidden = !willOpen;
+    settingsToggle.setAttribute("aria-expanded", String(willOpen));
+});
+
+document.addEventListener("click", (event) => {
+    if (!event.target.closest(".settings-menu")) {
+        closeSettingsMenu();
+    }
+});
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+        closeSettingsMenu();
+        settingsToggle.focus();
+    }
+});
+
 taskDateInput.value = localDateString();
+updateSelectedDayHeading(taskDateInput.value);
+initializeDatePicker({
+    input: taskDateInput,
+    toggle: document.querySelector("#date-picker-toggle"),
+    label: document.querySelector("#selected-date-label"),
+    popover: document.querySelector("#date-picker-popover"),
+    monthLabel: document.querySelector("#date-picker-month"),
+    days: document.querySelector("#date-picker-days"),
+    previousButton: document.querySelector("#date-picker-previous"),
+    nextButton: document.querySelector("#date-picker-next"),
+    todayButton: document.querySelector("#date-picker-today")
+});
 fetchTodos(taskDateInput.value);
 fetchHabits(taskDateInput.value).catch((error) => {
     console.error("Failed to fetch habits:", error);
@@ -131,6 +114,7 @@ fetchHabits(taskDateInput.value).catch((error) => {
 
 taskDateInput.addEventListener("change", () => {
     currentDate = dateTimeForSelectedDate(taskDateInput.value);
+    updateSelectedDayHeading(taskDateInput.value);
     fetchTodos(taskDateInput.value);
     fetchHabits(taskDateInput.value).catch((error) => {
         console.error("Failed to fetch habits:", error);
@@ -195,58 +179,12 @@ habitDetailDeleteButton.addEventListener("click", async () => {
 getCurrentUser()
     .then((user) => {
         if (user.role === "admin") {
-            createUserButton.hidden = false;
-            manageUsersButton.hidden = false;
+            adminLink.hidden = false;
         }
     })
     .catch((error) => {
         console.error("Failed to load current user:", error);
     });
-
-createUserButton.addEventListener("click", () => {
-    userForm.reset();
-    userCreateError.hidden = true;
-    userPopup.hidden = false;
-});
-
-manageUsersButton.addEventListener("click", async () => {
-    userListError.hidden = true;
-    try {
-        await renderUsers();
-        userListPopup.hidden = false;
-    } catch (error) {
-        userListError.textContent = error.message;
-        userListError.hidden = false;
-        userListPopup.hidden = false;
-    }
-});
-
-userListCloseButton.addEventListener("click", () => {
-    userListPopup.hidden = true;
-});
-
-userCloseButton.addEventListener("click", () => {
-    userPopup.hidden = true;
-});
-
-userForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const formData = new FormData(userForm);
-    userCreateError.hidden = true;
-    try {
-        await createUser(
-            formData.get("name"),
-            formData.get("email"),
-            formData.get("password"),
-            formData.get("role")
-        );
-        userPopup.hidden = true;
-        userForm.reset();
-    } catch (error) {
-        userCreateError.textContent = error.message;
-        userCreateError.hidden = false;
-    }
-});
 
 const logoutButton = document.querySelector("#logout");
 logoutButton.addEventListener("click", logout);

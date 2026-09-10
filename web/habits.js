@@ -143,23 +143,14 @@ export function closeHabitDetail () {
 }
 
 function renderHabits (habits, date) {
-    const todoList = document.querySelector("#todo-list");
-    todoList.querySelectorAll('[data-row-type="habit"]').forEach((row) => row.remove());
-
-    const firstTodo = todoList.querySelector('[data-row-type="todo"]');
-    const habitRows = document.createDocumentFragment();
+    const habitList = document.querySelector("#habit-list");
+    habitList.replaceChildren();
     for (const habit of habits) {
         const listItem = document.createElement("li");
-        listItem.dataset.rowType = "habit";
 
         const habitName = document.createElement("span");
+        habitName.className = "task-name";
         habitName.textContent = habit.name;
-
-        const loopIcon = document.createElement("span");
-        loopIcon.className = "habit-loop-icon";
-        loopIcon.textContent = "↻";
-        loopIcon.setAttribute("role", "img");
-        loopIcon.setAttribute("aria-label", "Repeating habit");
 
         const completions = habit.completions ?? [];
         const skips = habit.skips ?? [];
@@ -169,7 +160,8 @@ function renderHabits (habits, date) {
         const isSkipped = skips.some((skip) => skip.slice(0, 10) === date);
         const completeButton = document.createElement("button");
         completeButton.type = "button";
-        completeButton.textContent = isComplete ? "✓" : "Complete";
+        completeButton.className = "status-button";
+        completeButton.textContent = isComplete ? "✓" : "×";
         completeButton.classList.toggle("is-complete", isComplete);
         completeButton.setAttribute(
             "aria-label",
@@ -187,7 +179,8 @@ function renderHabits (habits, date) {
 
         const skipButton = document.createElement("button");
         skipButton.type = "button";
-        skipButton.textContent = isSkipped ? "Skipped" : "Skip";
+        skipButton.className = "status-button skip-button";
+        skipButton.textContent = "→";
         skipButton.classList.toggle("is-skipped", isSkipped);
         skipButton.setAttribute(
             "aria-label",
@@ -205,13 +198,12 @@ function renderHabits (habits, date) {
 
         const habitActions = document.createElement("span");
         habitActions.className = "habit-actions";
-        habitActions.append(loopIcon, completeButton, skipButton);
+        habitActions.append(completeButton, skipButton);
 
         listItem.addEventListener("click", () => openHabitDetail(habit));
         listItem.append(habitName, habitActions);
-        habitRows.appendChild(listItem);
+        habitList.appendChild(listItem);
     }
-    todoList.insertBefore(habitRows, firstTodo);
 }
 
 export async function fetchHabits (date) {

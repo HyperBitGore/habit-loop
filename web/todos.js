@@ -17,16 +17,18 @@ export function showTodo (hide) {
 
 function renderTodos (todos) {
     const todoList = document.querySelector("#todo-list");
-    todoList.querySelectorAll('[data-row-type="todo"]').forEach((row) => row.remove());
+    todoList.replaceChildren();
     todoArray = todos;
     for (const todo of todos) {
         const listItem = document.createElement("li");
-        listItem.dataset.rowType = "todo";
         const todoName = document.createElement("span");
+        todoName.className = "task-name";
         todoName.textContent = todo.name;
         const completeButton = document.createElement("button");
         completeButton.type = "button";
-        completeButton.textContent = todo.complete ? "✓" : "X";
+        completeButton.className = "status-button";
+        completeButton.classList.toggle("is-complete", todo.complete);
+        completeButton.textContent = todo.complete ? "✓" : "×";
         completeButton.setAttribute(
             "aria-label",
             todo.complete ? `Mark ${todo.name} incomplete` : `Mark ${todo.name} complete`
@@ -36,8 +38,27 @@ function renderTodos (todos) {
             await toggleTodoComplete(todo);
             await fetchTodos(todo.date.slice(0, 10));
         });
+
+        const skipButton = document.createElement("button");
+        skipButton.type = "button";
+        skipButton.className = "status-button skip-button";
+        skipButton.textContent = "→";
+        skipButton.setAttribute(
+            "aria-label",
+            `Move ${todo.name} to the next day`
+        );
+        skipButton.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            await skipTodo(todo);
+            await fetchTodos(todo.date.slice(0, 10));
+        });
+
+        const todoActions = document.createElement("span");
+        todoActions.className = "task-actions";
+        todoActions.append(completeButton, skipButton);
+
         listItem.addEventListener("click", () => openTodoDetail(todo));
-        listItem.append(todoName, completeButton);
+        listItem.append(todoName, todoActions);
         todoList.appendChild(listItem);
     }
 }
@@ -73,6 +94,16 @@ export async function saveSelectedTodo (name) {
 
 export async function toggleTodoComplete (todo) {
     await editTodo(todo.id, todo.name, todo.date, !todo.complete);
+}
+
+export async function skipTodo (todo) {
+    const currentDate = todo.date.slice(0, 10);
+    const [year, month, day] = currentDate.split("-").map(Number);
+    const nextDay = new Date(Date.UTC(year, month - 1, day + 1))
+        .toISOString()
+        .slice(0, 10);
+    const nextDate = `${nextDay}${todo.date.slice(10)}`;
+    await editTodo(todo.id, todo.name, nextDate, false);
 }
 
 export async function deleteSelectedTodo () {

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin | Habit Loop</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./admin.js"></script>
+  </head>
+  <body>
+    <main class="admin-page">
+      <header class="admin-header">
+        <div>
+          <p class="eyebrow">Habit Loop</p>
+          <h1>Admin</h1>
+          <p class="auth-intro">Create accounts and manage user access.</p>
+        </div>
+      </header>
+
+      <section class="admin-card" aria-labelledby="create-user-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">New account</p>
+            <h2 id="create-user-title">Create user</h2>
+          </div>
+        </div>
+        <form id="user-form" class="form-grid">
+          <label for="user-name">Username</label>
+          <input id="user-name" name="name" type="text" minlength="3" maxlength="50" required />
+          <label for="user-email">Email</label>
+          <input id="user-email" name="email" type="email" required />
+          <label for="user-password">Password</label>
+          <input id="user-password" name="password" type="password" minlength="8" maxlength="72" required />
+          <label for="user-role">Role</label>
+          <select id="user-role" name="role">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+          <p id="user-create-error" class="auth-error" role="alert" hidden></p>
+          <button class="primary-button" type="submit">Create user</button>
+        </form>
+      </section>
+
+      <section class="admin-card" aria-labelledby="manage-users-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Accounts</p>
+            <h2 id="manage-users-title">Manage users</h2>
+          </div>
+        </div>
+        <p id="user-list-error" class="auth-error" role="alert" hidden></p>
+        <div id="user-list" class="user-list"></div>
+      </section>
+
+      <a class="page-link" href="./todo.html">Back to habits and todos</a>
+    </main>
+  </body>
+</html>

@@ -4,3 +4,7 @@ users/
 sec.txt
 storage.db
 PRODUCTION_BACKEND_FIXES.txt
+frontend_style_changes.txt
+*.txt
+*.db-shm
+*.db-wal

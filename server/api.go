@@ -13,8 +13,11 @@ import (
 )
 
 // TODO
-//	- update the css
-//		- switch to react?
+//	- habits can appear on set interval or only certain days of the week
+//	- admin page, infinite/searchable user list
+//	- cloudflare turnstile
+//	- adsense
+//	- update readme
 
 var (
 	appConfig   Config
