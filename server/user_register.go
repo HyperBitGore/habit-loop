@@ -1,17 +1,12 @@
 package main
 
 import (
-	"crypto/rand"
+	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"html"
 	"net/http"
-	"net/mail"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -20,252 +15,175 @@ import (
 
 func HandleCreateAccount(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	defer r.Body.Close()
-
 	var account struct {
 		Name     string `json:"name"`
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&account); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if err := decodeJSON(w, r, &account); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	account.Name = strings.TrimSpace(account.Name)
-	account.Email = strings.TrimSpace(account.Email)
-	if account.Name == "" || account.Password == "" {
-		http.Error(w, "Name and password are required", http.StatusBadRequest)
-		return
-	}
-	address, err := mail.ParseAddress(account.Email)
-	if err != nil || address.Address != account.Email {
-		http.Error(w, "A valid email is required", http.StatusBadRequest)
-		return
-	}
-
-	userID, token, err := createRegisteredUser(database, account.Name, account.Email, account.Password)
+	userID, token, err := createUnverifiedUser(r.Context(), database, account.Name, account.Email, account.Password, "user", "account")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, publicAccountError(err))
 		return
 	}
-	verificationURL := applicationBaseURL(r) + "/api/verify-email?token=" + url.QueryEscape(token)
-	if err := SendVerificationEmail(account.Email, account.Name, verificationURL); err != nil {
-		if cleanupErr := DeleteUser(database, account.Name, int(userID)); cleanupErr != nil {
-			http.Error(w, "Verification email failed and account cleanup also failed", http.StatusInternalServerError)
-			return
+	if err := emailSender.SendVerification(
+		r.Context(),
+		normalizeEmail(account.Email),
+		strings.TrimSpace(account.Name),
+		verificationPageURL(token),
+	); err != nil {
+		if _, cleanupErr := database.ExecContext(r.Context(), "DELETE FROM users WHERE id = ?", userID); cleanupErr != nil {
+			logRequestError(r, "cleanup failed registration", cleanupErr)
 		}
-		http.Error(w, "Verification email could not be sent; account was not created", http.StatusInternalServerError)
+		writeAPIError(w, http.StatusBadGateway, "Verification email could not be sent")
 		return
 	}
-
 	w.WriteHeader(http.StatusCreated)
 }
 
-func createRegisteredUser(db *sql.DB, name, email, password string) (int64, string, error) {
+func createUnverifiedUser(
+	ctx context.Context,
+	db *sql.DB,
+	name string,
+	email string,
+	password string,
+	role string,
+	verificationKind string,
+) (int64, string, error) {
+	name = strings.TrimSpace(name)
+	email = normalizeEmail(email)
+	if err := validateUsername(name); err != nil {
+		return 0, "", err
+	}
+	if err := validateEmail(email); err != nil {
+		return 0, "", err
+	}
+	if err := validatePassword(password); err != nil {
+		return 0, "", err
+	}
+	if role != "user" && role != "admin" {
+		return 0, "", fmt.Errorf("invalid role")
+	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return 0, "", fmt.Errorf("failed to generate password hash: %w", err)
-	}
-
-	var exists bool
-	if err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE name = ?)", name).Scan(&exists); err != nil {
 		return 0, "", err
 	}
-	if exists {
-		return 0, "", fmt.Errorf("username %q is already taken", name)
-	}
-	if err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)", email).Scan(&exists); err != nil {
+	token, tokenHash, err := newToken()
+	if err != nil {
 		return 0, "", err
 	}
-	if exists {
-		return 0, "", fmt.Errorf("email is already registered")
-	}
 
-	rawToken := make([]byte, 32)
-	if _, err := rand.Read(rawToken); err != nil {
-		return 0, "", err
-	}
-	token := base64.RawURLEncoding.EncodeToString(rawToken)
-	tokenHash := sha256.Sum256([]byte(token))
-
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, "", err
 	}
 	defer tx.Rollback()
-
-	result, err := tx.Exec(`
-		INSERT INTO users (name, email, password_hash, role, email_verified)
-		VALUES (?, ?, ?, 'user', FALSE)
-	`, name, email, string(passwordHash))
+	result, err := tx.ExecContext(ctx, `
+		INSERT INTO users (
+			name, email, email_normalized, password_hash, role, email_verified
+		)
+		VALUES (?, ?, ?, ?, ?, FALSE)
+	`, name, email, normalizeEmail(email), string(passwordHash), role)
 	if err != nil {
-		return 0, "", fmt.Errorf("failed to create account: %w", err)
+		if strings.Contains(strings.ToLower(err.Error()), "name") {
+			return 0, "", fmt.Errorf("username is already taken")
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "email") {
+			return 0, "", fmt.Errorf("email is already registered")
+		}
+		return 0, "", err
 	}
 	userID, err := result.LastInsertId()
 	if err != nil {
 		return 0, "", err
 	}
-	_, err = tx.Exec(`
-		INSERT INTO email_verifications (token_hash, user_id, expires_at)
-		VALUES (?, ?, ?)
-	`, tokenHash[:], userID, time.Now().UTC().Add(24*time.Hour).Format("2006-01-02 15:04:05"))
-	if err != nil {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO email_verifications (token_hash, user_id, email, kind, expires_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, tokenHash, userID, email, verificationKind, timestamp(time.Now().Add(24*time.Hour))); err != nil {
 		return 0, "", err
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, "", err
 	}
-
 	return userID, token, nil
 }
 
-func SendVerificationEmail(targetEmail, userName, verificationURL string) error {
-	from := os.Getenv("RESEND_FROM_EMAIL")
-	fmt.Printf("from: %v\n", from)
-	if from == "" {
-		return fmt.Errorf("RESEND_API_KEY and RESEND_FROM_EMAIL must be configured")
-	}
-	payload, err := json.Marshal(map[string]any{
-		"from":    from,
-		"to":      []string{targetEmail},
-		"subject": "Verify your Habit Loop account",
-		"html": fmt.Sprintf(
-			"<p>Hello %s,</p><p><a href=\"%s\">Verify your account</a>.</p>",
-			html.EscapeString(userName),
-			html.EscapeString(verificationURL),
-		),
-	})
-	if err != nil {
-		return err
-	}
-	err = SendEmail(payload)
-	return err
-}
-
-func applicationBaseURL(r *http.Request) string {
-	baseURL := strings.TrimRight(os.Getenv("APP_BASE_URL"), "/")
-	if baseURL != "" {
-		return baseURL
-	}
-	scheme := "http"
-	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
-		scheme = "https"
-	}
-	return scheme + "://" + r.Host
-}
-
-func SendPasswordResetEmail(targetEmail, userName, resetURL string) error {
-	from := os.Getenv("RESEND_FROM_EMAIL")
-	if from == "" {
-		return fmt.Errorf("RESEND_API_KEY and RESEND_FROM_EMAIL must be configured")
-	}
-	payload, err := json.Marshal(map[string]any{
-		"from":    from,
-		"to":      []string{targetEmail},
-		"subject": "Reset your Habit Loop password",
-		"html": fmt.Sprintf(
-			"<p>Hello %s,</p><p><a href=\"%s\">Reset your password</a>.</p><p>This link expires in one hour.</p>",
-			html.EscapeString(userName),
-			html.EscapeString(resetURL),
-		),
-	})
-	if err != nil {
-		return err
-	}
-	return SendEmail(payload)
+func verificationPageURL(token string) string {
+	return appConfig.AppBaseURL.String() + "/verify-email.html?token=" + url.QueryEscape(token)
 }
 
 func HandleVerifyEmail(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		http.Error(w, "Verification token is required", http.StatusBadRequest)
+	if r.Method != http.MethodPost {
+		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	tokenHash := sha256.Sum256([]byte(token))
-
-	var userID int
-	err := database.QueryRow(`
-		SELECT user_id
-		FROM email_verifications
-		WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP
-	`, tokenHash[:]).Scan(&userID)
-	if err == sql.ErrNoRows {
-		http.Error(w, "Invalid or expired verification token", http.StatusBadRequest)
+	var request struct {
+		Token string `json:"token"`
+	}
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	tokenHash := sha256.Sum256([]byte(request.Token))
+	tx, err := database.BeginTx(r.Context(), nil)
 	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
-		return
-	}
-
-	tx, err := database.Begin()
-	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "Unable to verify email")
 		return
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec("UPDATE users SET email_verified = TRUE WHERE id = ?", userID); err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
+
+	var userID int
+	var email, kind string
+	err = tx.QueryRowContext(r.Context(), `
+		SELECT user_id, email, kind
+		FROM email_verifications
+		WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP
+	`, tokenHash[:]).Scan(&userID, &email, &kind)
+	if err == sql.ErrNoRows {
+		writeAPIError(w, http.StatusBadRequest, "Invalid or expired verification link")
 		return
 	}
-	if _, err := tx.Exec("DELETE FROM email_verifications WHERE token_hash = ?", tokenHash[:]); err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "Unable to verify email")
+		return
+	}
+	switch kind {
+	case "account", "activation":
+		if _, err := tx.ExecContext(r.Context(), `
+			UPDATE users SET email = ?, email_normalized = ?, email_verified = TRUE
+			WHERE id = ?
+		`, email, normalizeEmail(email), userID); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "Unable to verify email")
+			return
+		}
+	case "email_change":
+		if _, err := tx.ExecContext(r.Context(), `
+			UPDATE users
+			SET email = ?, email_normalized = ?, email_verified = TRUE,
+			    pending_email = NULL, pending_email_normalized = NULL
+			WHERE id = ?
+		`, email, normalizeEmail(email), userID); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "Email is already registered")
+			return
+		}
+	default:
+		writeAPIError(w, http.StatusBadRequest, "Invalid verification link")
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), "DELETE FROM email_verifications WHERE user_id = ?", userID); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "Unable to verify email")
 		return
 	}
 	if err := tx.Commit(); err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "Unable to verify email")
 		return
 	}
-
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func CheckEmailVerified(db *sql.DB, name string) (bool, error) {
-	var ver bool
-	err := db.QueryRow(`
-		SELECT email_verified
-		FROM users
-		WHERE name = ?
-	`, name).Scan(&ver)
-	if err == sql.ErrNoRows {
-		return false, nil // user not found
-	}
-	if err != nil {
-		return false, err
-	}
-	return ver, nil
-}
-
-func SendEmail(payload []byte) error {
-	apiKey := os.Getenv("RESEND_API_KEY")
-
-	if apiKey == "" {
-		return fmt.Errorf("RESEND_API_KEY and RESEND_FROM_EMAIL must be configured")
-	}
-
-	req, err := http.NewRequest(
-		http.MethodPost,
-		"https://api.resend.com/emails",
-		strings.NewReader(string(payload)),
-	)
-	if err != nil {
-		fmt.Printf("Error from resend: %v\n", err)
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Resend returned %s", resp.Status)
-	}
-	return nil
 }

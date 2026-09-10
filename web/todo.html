@@ -116,14 +116,17 @@
         <h2 id="user-popup-title">Create User</h2>
         <form id="user-form">
           <label for="user-name">Username</label>
-          <input id="user-name" name="name" type="text" required />
+          <input id="user-name" name="name" type="text" minlength="3" maxlength="50" required />
+          <label for="user-email">Email</label>
+          <input id="user-email" name="email" type="email" required />
           <label for="user-password">Password</label>
-          <input id="user-password" name="password" type="password" required />
+          <input id="user-password" name="password" type="password" minlength="8" maxlength="72" required />
           <label for="user-role">Role</label>
           <select id="user-role" name="role">
             <option value="user">User</option>
             <option value="admin">Admin</option>
           </select>
+          <p id="user-create-error" class="auth-error" role="alert" hidden></p>
           <button type="submit">Create User</button>
         </form>
       </section>

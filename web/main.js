@@ -56,6 +56,7 @@ const manageUsersButton = document.querySelector("#manage-users");
 const userPopup = document.querySelector("#user-popup");
 const userCloseButton = document.querySelector("#user-close");
 const userForm = document.querySelector("#user-form");
+const userCreateError = document.querySelector("#user-create-error");
 const userListPopup = document.querySelector("#user-list-popup");
 const userListCloseButton = document.querySelector("#user-list-close");
 const userList = document.querySelector("#user-list");
@@ -204,6 +205,7 @@ getCurrentUser()
 
 createUserButton.addEventListener("click", () => {
     userForm.reset();
+    userCreateError.hidden = true;
     userPopup.hidden = false;
 });
 
@@ -230,16 +232,19 @@ userCloseButton.addEventListener("click", () => {
 userForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(userForm);
+    userCreateError.hidden = true;
     try {
         await createUser(
             formData.get("name"),
+            formData.get("email"),
             formData.get("password"),
             formData.get("role")
         );
         userPopup.hidden = true;
         userForm.reset();
     } catch (error) {
-        console.error("Failed to create user:", error);
+        userCreateError.textContent = error.message;
+        userCreateError.hidden = false;
     }
 });
 

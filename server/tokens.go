@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -13,9 +14,9 @@ func hashSessionToken(token string) []byte {
 	return hash[:]
 }
 
-func userIDFromToken(db *sql.DB, token string) (int, bool, error) {
+func userIDFromToken(ctx context.Context, db *sql.DB, token string) (int, bool, error) {
 	var userID int
-	err := db.QueryRow(`
+	err := db.QueryRowContext(ctx, `
 		SELECT user_id
 		FROM sessions
 		WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP
@@ -29,45 +30,31 @@ func userIDFromToken(db *sql.DB, token string) (int, bool, error) {
 	return userID, true, nil
 }
 
-func CreateSessionToken(db *sql.DB, userID int) (string, error) {
+func CreateSessionToken(ctx context.Context, db *sql.DB, userID int) (string, error) {
 	rawToken := make([]byte, 32)
 	if _, err := rand.Read(rawToken); err != nil {
 		return "", err
 	}
 	token := base64.RawURLEncoding.EncodeToString(rawToken)
-
-	_, err := db.Exec(`
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO sessions (token_hash, user_id, expires_at)
 		VALUES (?, ?, ?)
-	`, hashSessionToken(token), userID, time.Now().UTC().Add(sessionTimeMinutes*time.Minute).Format("2006-01-02 15:04:05"))
+	`, hashSessionToken(token), userID, timestamp(time.Now().Add(sessionTimeMinutes*time.Minute)))
 	if err != nil {
 		return "", err
 	}
-
 	return token, nil
 }
 
-func CheckSessionToken(token string) bool {
-	_, ok, err := userIDFromToken(database, token)
-	return err == nil && ok
-}
-
-func GetUserFromToken(token string) (*User, error) {
-	id, ok, err := userIDFromToken(database, token)
-	if err != nil {
+func GetUserFromToken(ctx context.Context, db *sql.DB, token string) (*User, error) {
+	id, ok, err := userIDFromToken(ctx, db, token)
+	if err != nil || !ok {
 		return nil, err
 	}
-	if !ok {
-		return nil, nil
-	}
-
-	return getUserByID(database, id)
+	return getUserByID(ctx, db, id)
 }
 
-func DeleteSessionToken(token string) error {
-	_, err := database.Exec(
-		"DELETE FROM sessions WHERE token_hash = ?",
-		hashSessionToken(token),
-	)
+func DeleteSessionToken(ctx context.Context, db *sql.DB, token string) error {
+	_, err := db.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", hashSessionToken(token))
 	return err
 }

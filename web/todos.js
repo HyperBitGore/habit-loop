@@ -82,7 +82,7 @@ export async function deleteSelectedTodo () {
 
     const todo = detailTodo;
     try {
-        const result = await apiFetch("http://localhost:8081/api/remove_task", {
+        const result = await apiFetch("/api/remove_task", {
             method: "PUT",
             headers: {
                 "X-Task-ID": String(todo.id)
@@ -101,7 +101,7 @@ export async function fetchTodos (date) {
     console.log("Fetching todos");
     try {
         const response = await apiFetch(
-            `http://localhost:8081/api/get_tasks?date=${encodeURIComponent(date)}`
+            `/api/get_tasks?date=${encodeURIComponent(date)}`
         );
         if (!response.ok) {
             throw new Error(`HTTP error! Status: ${response.status}`);
@@ -122,7 +122,7 @@ export async function addTodo (name, time, complete) {
     console.log("Adding todo")
     const todo = constructTodo(name, time, complete)
     try {
-        const result = await apiFetch("http://localhost:8081/api/add_task", {
+        const result = await apiFetch("/api/add_task", {
             method: "PUT",
             headers: {
                 "X-Task-Name": name,
@@ -147,7 +147,7 @@ export async function editTodo (todo_id, todo_name, todo_date, todo_complete) {
     }
     console.log(todo);
     try {
-        const result = await apiFetch("http://localhost:8081/api/update_task", {
+        const result = await apiFetch("/api/update_task", {
             method: "PUT",
             headers: {
                 "X-Task-Name": todo_name,

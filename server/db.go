@@ -2,103 +2,57 @@ package main
 
 import (
 	"database/sql"
-	"log"
+	"fmt"
+	"time"
+
 	_ "modernc.org/sqlite"
 )
 
 var database *sql.DB
 
-func InitDB() {
-	db, err := sql.Open("sqlite", "storage.db")
+func InitDB(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
+
+	for _, pragma := range []string{
+		"PRAGMA foreign_keys = ON",
+		"PRAGMA journal_mode = WAL",
+		"PRAGMA busy_timeout = 5000",
+		"PRAGMA synchronous = NORMAL",
+	} {
+		if _, err := db.Exec(pragma); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("configure database: %w", err)
+		}
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("ping database: %w", err)
+	}
+	if err := runMigrations(db); err != nil {
+		db.Close()
+		return nil, err
 	}
 	database = db
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS todos (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			user_name TEXT NOT NULL,
-            name TEXT NOT NULL,
-			date TEXT NOT NULL,
-            complete BOOLEAN NOT NULL DEFAULT FALSE
-        )
-    `)
+	return db, nil
+}
+
+func cleanupExpiredRecords(db *sql.DB) error {
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	tx, err := db.Begin()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL,
-			password_hash TEXT NOT NULL,
-            next_task_id INTEGER NOT NULL DEFAULT 0,
-			role TEXT NOT NULL,
-			next_habit_id INTEGER NOT NULL DEFAULT 0,
-			email TEXT,
-			email_verified BOOLEAN NOT NULL DEFAULT FALSE
-        )
-    `)
-	if err != nil {
-		log.Fatal(err)
+	defer tx.Rollback()
+	for _, table := range []string{"sessions", "email_verifications", "password_resets"} {
+		if _, err := tx.Exec("DELETE FROM "+table+" WHERE expires_at <= ?", now); err != nil {
+			return fmt.Errorf("clean expired %s: %w", table, err)
+		}
 	}
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS habits (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_name TEXT NOT NULL,
-            name TEXT NOT NULL
-        )
-    `)
-	if err != nil {
-		log.Fatal(err)
-	}
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS completions (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-            habit_id INTEGER NOT NULL,
-            date TEXT NOT NULL
-        )
-    `)
-	if err != nil {
-		log.Fatal(err)
-	}
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS skips (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-            habit_id INTEGER NOT NULL,
-            date TEXT NOT NULL
-        )
-    `)
-	if err != nil {
-		log.Fatal(err)
-	}
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS sessions (
-			token_hash BLOB PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            expires_at DATETIME NOT NULL
-        )
-    `)
-	if err != nil {
-		log.Fatal(err)
-	}
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS email_verifications (
-			token_hash BLOB PRIMARY KEY,
-			user_id INTEGER NOT NULL,
-			expires_at DATETIME NOT NULL
-        )
-    `)
-	if err != nil {
-		log.Fatal(err)
-	}
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS password_resets (
-			token_hash BLOB PRIMARY KEY,
-			user_id INTEGER NOT NULL,
-			expires_at DATETIME NOT NULL
-        )
-    `)
-	if err != nil {
-		log.Fatal(err)
-	}
+	return tx.Commit()
 }

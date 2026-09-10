@@ -5,6 +5,15 @@ const registrationName = document.querySelector("#registration-name");
 const openRegistrationButton = document.querySelector("#open-registration-button");
 const closeRegistrationButton = document.querySelector("#close-registration-button");
 
+async function responseError(response, fallback) {
+    try {
+        const body = await response.json();
+        return body.error || fallback;
+    } catch {
+        return fallback;
+    }
+}
+
 function closeRegistrationPopup () {
     registrationPopup.hidden = true;
     registrationForm.reset();
@@ -51,7 +60,7 @@ if (registrationForm) {
             closeRegistrationPopup();
             document.querySelector("#name").value = formData.get("name");
             const loginError = document.querySelector("#login-error");
-            loginError.textContent = "Account created. You can now log in.";
+            loginError.textContent = "Account created. Check your email to verify it before logging in.";
             loginError.classList.add("is-success");
             loginError.hidden = false;
         } catch (error) {
@@ -105,7 +114,7 @@ export async function requestPasswordReset (email) {
         body: JSON.stringify({ email })
     });
     if (!response.ok) {
-        throw new Error(await response.text() || "Unable to request a password reset.");
+        throw new Error(await responseError(response, "Unable to request a password reset."));
     }
 }
 
@@ -121,7 +130,7 @@ export async function resetPassword (token, newPassword) {
         })
     });
     if (!response.ok) {
-        throw new Error(await response.text() || "Unable to reset password.");
+        throw new Error(await responseError(response, "Unable to reset password."));
     }
 }
 
@@ -147,21 +156,20 @@ export async function registerUser (name, email, password) {
     });
 
     if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Unable to register user.");
+        throw new Error(await responseError(response, "Unable to register user."));
     }
 }
 
-export async function createUser (name, password, role) {
+export async function createUser (name, email, password, role) {
     const response = await fetch("/api/register_user", {
-        method: "PUT",
+        method: "POST",
         headers: {
             "Content-Type": "application/json"
         },
-        body: JSON.stringify({ name, password, role })
+        body: JSON.stringify({ name, email, password, role })
     });
     if (!response.ok) {
-        throw new Error(await response.text() || "Unable to create user.");
+        throw new Error(await responseError(response, "Unable to create user."));
     }
 }
 
@@ -173,17 +181,22 @@ export async function getCurrentUser () {
     return response.json();
 }
 
-export async function updateProfile (name, email) {
+export async function updateProfile (name, email, currentPassword) {
     const response = await fetch("/api/profile", {
         method: "PUT",
         headers: {
             "Content-Type": "application/json"
         },
-        body: JSON.stringify({ name, email })
+        body: JSON.stringify({
+            name,
+            email,
+            current_password: currentPassword
+        })
     });
     if (!response.ok) {
-        throw new Error(await response.text() || "Unable to update profile.");
+        throw new Error(await responseError(response, "Unable to update profile."));
     }
+    return response.json();
 }
 
 export async function getUsers () {
@@ -203,20 +216,20 @@ export async function editUser (id, name, role) {
         body: JSON.stringify({ id, name, role })
     });
     if (!response.ok) {
-        throw new Error("Unable to update user.");
+        throw new Error(await responseError(response, "Unable to update user."));
     }
 }
 
-export async function deleteUser (id, name) {
+export async function deleteUser (id) {
     const response = await fetch("/api/delete_user", {
-        method: "PUT",
+        method: "DELETE",
         headers: {
             "Content-Type": "application/json"
         },
-        body: JSON.stringify({ id, name })
+        body: JSON.stringify({ id })
     });
     if (!response.ok) {
-        throw new Error(await response.text() || "Unable to delete user.");
+        throw new Error(await responseError(response, "Unable to delete user."));
     }
 }
 
@@ -232,6 +245,6 @@ export async function setPassword (currentPassword, newPassword) {
         })
     });
     if (!response.ok) {
-        throw new Error(await response.text() || "Unable to update password.");
+        throw new Error(await responseError(response, "Unable to update password."));
     }
 }

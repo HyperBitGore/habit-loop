@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type Task struct {
@@ -17,77 +18,67 @@ type Task struct {
 	ID       uint64    `json:"id"`
 }
 
-func getUserTasks(db *sql.DB, user *User) ([]Task, error) {
+func validateItemName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("name is required")
+	}
+	if utf8.RuneCountInString(name) > 200 {
+		return "", fmt.Errorf("name must be at most 200 characters")
+	}
+	return name, nil
+}
+
+func getUserTasks(db *sql.DB, userID int, date string) ([]Task, error) {
 	rows, err := db.Query(`
 		SELECT id, name, date, complete
 		FROM todos
-		WHERE user_name = ?
+		WHERE user_id = ? AND substr(date, 1, 10) = ?
 		ORDER BY date, id
-	`, user.Name)
+	`, userID, date)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
 	tasks := make([]Task, 0)
 	for rows.Next() {
 		var task Task
-		var date string
-
-		if err := rows.Scan(&task.ID, &task.Name, &date, &task.Complete); err != nil {
+		var storedDate string
+		if err := rows.Scan(&task.ID, &task.Name, &storedDate, &task.Complete); err != nil {
 			return nil, err
 		}
-		task.Date, err = parseTaskDate(date)
+		task.Date, err = parseTaskDate(storedDate)
 		if err != nil {
 			return nil, fmt.Errorf("parse task %d date: %w", task.ID, err)
 		}
-
 		tasks = append(tasks, task)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return tasks, nil
+	return tasks, rows.Err()
 }
 
 func handleGetTodos(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Recieved a todo list request")
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 	user := requestUser(w, r)
 	if user == nil {
 		return
 	}
-	tasks, err := getUserTasks(database, user)
-	if err != nil {
-		http.Error(w, "Failed to load tasks", http.StatusInternalServerError)
-		return
-	}
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
 	}
-
-	todayTasks := make([]Task, 0)
-	for _, task := range tasks {
-		if task.Date.Format("2006-01-02") == date {
-			todayTasks = append(todayTasks, task)
-		}
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "Invalid task date")
+		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(todayTasks); err != nil {
-		http.Error(w, "Failed to encode tasks", http.StatusInternalServerError)
+	tasks, err := getUserTasks(database, user.ID, date)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "Unable to load tasks")
+		return
 	}
-}
-
-func addTask(tasks *[]Task, nextTaskID *uint64, name string, date time.Time, complete bool) {
-	*nextTaskID = *nextTaskID + 1
-	task := Task{Name: name, Date: date, Complete: complete, ID: *nextTaskID}
-	*tasks = append(*tasks, task)
+	writeJSON(w, http.StatusOK, tasks)
 }
 
 func parseTaskDate(value string) (time.Time, error) {
@@ -101,142 +92,119 @@ func parseTaskDate(value string) (time.Time, error) {
 }
 
 func HandleAddTask(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Adding task!")
 	if r.Method != http.MethodPut {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	name := r.Header.Get("X-Task-Name")
+	name, err := validateItemName(r.Header.Get("X-Task-Name"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	date, err := parseTaskDate(r.Header.Get("X-Task-Date"))
 	if err != nil {
-		http.Error(w, "Invalid task date", http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "Invalid task date")
 		return
 	}
 	complete, err := strconv.ParseBool(r.Header.Get("X-Task-Complete"))
 	if err != nil {
-		http.Error(w, "Invalid task completion value", http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "Invalid task completion value")
 		return
 	}
 	user := requestUser(w, r)
 	if user == nil {
 		return
 	}
-
-	_, err = database.Exec(`
-		INSERT INTO todos (user_name, name, date, complete)
+	if _, err := database.ExecContext(r.Context(), `
+		INSERT INTO todos (user_id, name, date, complete)
 		VALUES (?, ?, ?, ?)
-	`, user.Name, name, date.Format(time.RFC3339), complete)
-	if err != nil {
-		http.Error(w, "Failed to save task", http.StatusInternalServerError)
+	`, user.ID, name, date.Format(time.RFC3339), complete); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "Unable to save task")
 		return
 	}
-
 	w.WriteHeader(http.StatusCreated)
 }
 
-func removeTask(tasks *[]Task, id uint64) {
-	idx := slices.IndexFunc(*tasks, func(n Task) bool {
-		return id == n.ID
-	})
-	if idx != -1 {
-		*tasks = append((*tasks)[:idx], (*tasks)[idx+1:]...)
-	}
-}
-
 func HandleRemoveTask(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Removing Task!")
-	if r.Method != http.MethodPut {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	if r.Method != http.MethodDelete && r.Method != http.MethodPut {
+		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 	id, err := strconv.ParseUint(r.Header.Get("X-Task-ID"), 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid task ID", http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "Invalid task ID")
 		return
 	}
 	user := requestUser(w, r)
 	if user == nil {
 		return
 	}
-
-	result, err := database.Exec(
-		"DELETE FROM todos WHERE id = ? AND user_name = ?",
-		id,
-		user.Name,
-	)
+	result, err := database.ExecContext(r.Context(), "DELETE FROM todos WHERE id = ? AND user_id = ?", id, user.ID)
 	if err != nil {
-		http.Error(w, "Failed to save task", http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "Unable to delete task")
 		return
 	}
-
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		http.Error(w, "Failed to verify task deletion", http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "Unable to delete task")
 		return
 	}
 	if rowsAffected == 0 {
-		http.Error(w, "Task not found", http.StatusNotFound)
+		writeAPIError(w, http.StatusNotFound, "Task not found")
 		return
 	}
-
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func editTask(tasks *[]Task, id uint64, name string, date time.Time, complete bool) {
-	idx := slices.IndexFunc(*tasks, func(n Task) bool {
-		return id == n.ID
-	})
-	if idx != -1 {
-		(*tasks)[idx] = Task{Name: name, Date: date, Complete: complete, ID: id}
-	}
-}
-
 func HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Updating Task!")
 	if r.Method != http.MethodPut {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 	id, err := strconv.ParseUint(r.Header.Get("X-Task-ID"), 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid task ID", http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "Invalid task ID")
 		return
 	}
-	name := r.Header.Get("X-Task-Name")
+	name, err := validateItemName(r.Header.Get("X-Task-Name"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	date, err := parseTaskDate(r.Header.Get("X-Task-Date"))
 	if err != nil {
-		http.Error(w, "Invalid task date", http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "Invalid task date")
 		return
 	}
 	complete, err := strconv.ParseBool(r.Header.Get("X-Task-Complete"))
 	if err != nil {
-		http.Error(w, "Invalid task completion value", http.StatusBadRequest)
+		writeAPIError(w, http.StatusBadRequest, "Invalid task completion value")
 		return
 	}
 	user := requestUser(w, r)
 	if user == nil {
 		return
 	}
-
-	result, err := database.Exec(`
-		UPDATE todos
-		SET name = ?, date = ?, complete = ?
-		WHERE id = ? AND user_name = ?
-	`, name, date.Format(time.RFC3339), complete, id, user.Name)
+	result, err := database.ExecContext(r.Context(), `
+		UPDATE todos SET name = ?, date = ?, complete = ?
+		WHERE id = ? AND user_id = ?
+	`, name, date.Format(time.RFC3339), complete, id, user.ID)
 	if err != nil {
-		http.Error(w, "Failed to save task", http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "Unable to update task")
 		return
 	}
-
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		http.Error(w, "Failed to verify task update", http.StatusInternalServerError)
+		writeAPIError(w, http.StatusInternalServerError, "Unable to update task")
 		return
 	}
 	if rowsAffected == 0 {
-		http.Error(w, "Task not found", http.StatusNotFound)
+		writeAPIError(w, http.StatusNotFound, "Task not found")
 		return
 	}
-
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func encodeTasks(tasks []Task) ([]byte, error) {
+	return json.Marshal(tasks)
 }

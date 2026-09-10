@@ -14,18 +14,81 @@ From the repository root:
 
 ```bash
 cd server
+export BOOTSTRAP_ADMIN_NAME=owner
+export BOOTSTRAP_ADMIN_EMAIL=owner@example.com
+export BOOTSTRAP_ADMIN_PASSWORD='replace-with-a-long-password'
 go run .
 ```
 
 Open <http://localhost:8081>. On the first run, the server prompts for an
-admin name and password, then stores the account in `server/users/`.
+administrator only through the three server-side bootstrap environment
+variables above. Bootstrap creation is allowed only when the database contains
+no administrator. Remove the bootstrap variables after the first successful
+startup. Public registration can never create an administrator.
 
-Set `APP_BASE_URL` to the public URL when running behind a proxy or on a
-deployed host so verification emails contain an absolute link, for example:
+Local development defaults to `APP_ENV=development`,
+`APP_BASE_URL=http://localhost:8081`, insecure cookies, `storage.db`, and
+`../web`.
+
+## Production configuration
+
+Production startup validates its configuration and refuses unsafe defaults:
 
 ```bash
+export APP_ENV=production
+export LISTEN_ADDR=:8081
+export DATABASE_PATH=/var/lib/habit-loop/storage.db
+export WEB_ROOT=/opt/habit-loop/web
 export APP_BASE_URL=https://habit-loop.example.com
+export RESEND_API_KEY='...'
+export RESEND_FROM_EMAIL='Habit Loop <no-reply@example.com>'
+export SECURE_COOKIES=true
+export TRUST_PROXY_HEADERS=true
+export TRUSTED_PROXY_CIDRS=127.0.0.1/32
 ```
+
+`APP_BASE_URL` must be an absolute HTTPS URL in production. Verification and
+password-reset links are always built from this configured value and never
+from the request `Host` header.
+
+Set `TRUST_PROXY_HEADERS=true` only when the server is reachable exclusively
+through reverse proxies listed in `TRUSTED_PROXY_CIDRS`. Multiple IP addresses
+or CIDRs are comma-separated. A trusted proxy must overwrite `X-Forwarded-For`
+and `X-Forwarded-Proto`, terminate HTTPS, and send
+`X-Forwarded-Proto: https`; otherwise production requests are rejected.
+
+The server exposes:
+
+- `GET /healthz` for process health.
+- `GET /readyz` for database readiness.
+
+It handles `SIGINT` and `SIGTERM` with a bounded graceful shutdown.
+
+## Database migrations
+
+Database migrations run transactionally at startup. A fresh database starts at
+schema version 1 with `user_id` foreign keys, cascading deletion, normalized
+unique emails, token expiration indexes, and unique habit-date constraints.
+
+Legacy unversioned databases are not converted. If startup reports an
+unversioned schema, stop the service, remove the configured database, and
+restart to create a fresh versioned database.
+
+## SQLite backup and restore
+
+Stop writes before taking a filesystem copy. The safest procedure is:
+
+```bash
+curl --fail http://127.0.0.1:8081/readyz
+# Stop the service gracefully, then:
+cp /var/lib/habit-loop/storage.db /var/backups/habit-loop/storage-$(date +%F-%H%M%S).db
+```
+
+If WAL files are present, stop the service before copying or use SQLite's
+online backup tooling. Restore by stopping the service, preserving the current
+database separately, copying the selected backup to `DATABASE_PATH`, fixing
+ownership and permissions, and starting the service. Only backups created from
+the versioned production schema are supported.
 
 To build a binary instead:
 
