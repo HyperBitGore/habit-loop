@@ -65,6 +65,12 @@ const habitDetailDeleteButton = document.querySelector("#habit-detail-delete");
 const habitDetailError = document.querySelector("#habit-detail-error");
 const habitCalendarPreviousButton = document.querySelector("#habit-calendar-previous");
 const habitCalendarNextButton = document.querySelector("#habit-calendar-next");
+const habitScheduleMode = document.querySelector("#habit-schedule-mode");
+const habitIntervalFields = document.querySelector("#habit-interval-fields");
+const habitWeekdayFields = document.querySelector("#habit-weekday-fields");
+const habitDetailScheduleMode = document.querySelector("#habit-detail-schedule-mode");
+const habitDetailIntervalFields = document.querySelector("#habit-detail-interval-fields");
+const habitDetailWeekdayFields = document.querySelector("#habit-detail-weekday-fields");
 const taskDateInput = document.querySelector("#task-date");
 const settingsToggle = document.querySelector("#settings-toggle");
 const settingsDropdown = document.querySelector("#settings-dropdown");
@@ -74,6 +80,35 @@ function closeSettingsMenu () {
     settingsDropdown.hidden = true;
     settingsToggle.setAttribute("aria-expanded", "false");
 }
+
+function updateScheduleFields (modeSelect, intervalFields, weekdayFields) {
+    const usesWeekdays = modeSelect.value === "days";
+    intervalFields.hidden = usesWeekdays;
+    weekdayFields.hidden = !usesWeekdays;
+}
+
+function readSchedule (modeSelect, intervalInput, weekdayFields) {
+    const daysOfWeek = {};
+    for (const checkbox of weekdayFields.querySelectorAll("input[data-day]")) {
+        daysOfWeek[checkbox.dataset.day] = checkbox.checked;
+    }
+    return {
+        interval: Number.parseInt(intervalInput.value, 10),
+        daysMode: modeSelect.value === "days",
+        daysOfWeek
+    };
+}
+
+habitScheduleMode.addEventListener("change", () => {
+    updateScheduleFields(habitScheduleMode, habitIntervalFields, habitWeekdayFields);
+});
+habitDetailScheduleMode.addEventListener("change", () => {
+    updateScheduleFields(
+        habitDetailScheduleMode,
+        habitDetailIntervalFields,
+        habitDetailWeekdayFields
+    );
+});
 
 settingsToggle.addEventListener("click", () => {
     const willOpen = settingsDropdown.hidden;
@@ -123,6 +158,7 @@ taskDateInput.addEventListener("change", () => {
 
 habitOpenButton.addEventListener("click", () => {
     habitForm.reset();
+    updateScheduleFields(habitScheduleMode, habitIntervalFields, habitWeekdayFields);
     habitError.hidden = true;
     habitPopup.hidden = false;
 });
@@ -136,7 +172,15 @@ habitForm.addEventListener("submit", async (event) => {
     const formData = new FormData(habitForm);
     habitError.hidden = true;
     try {
-        await addHabit(formData.get("name"));
+        await addHabit(
+            formData.get("name"),
+            readSchedule(
+                habitScheduleMode,
+                document.querySelector("#habit-interval"),
+                habitWeekdayFields
+            ),
+            localDateString()
+        );
         await fetchHabits(taskDateInput.value);
         habitPopup.hidden = true;
         habitForm.reset();
@@ -159,7 +203,15 @@ habitDetailForm.addEventListener("submit", async (event) => {
     const formData = new FormData(habitDetailForm);
     habitDetailError.hidden = true;
     try {
-        await saveSelectedHabit(formData.get("name"), taskDateInput.value);
+        await saveSelectedHabit(
+            formData.get("name"),
+            taskDateInput.value,
+            readSchedule(
+                habitDetailScheduleMode,
+                document.querySelector("#habit-detail-interval"),
+                habitDetailWeekdayFields
+            )
+        );
     } catch (error) {
         habitDetailError.textContent = error.message;
         habitDetailError.hidden = false;

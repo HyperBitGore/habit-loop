@@ -66,13 +66,15 @@ It handles `SIGINT` and `SIGTERM` with a bounded graceful shutdown.
 
 ## Database migrations
 
-Database migrations run transactionally at startup. A fresh database starts at
-schema version 1 with `user_id` foreign keys, cascading deletion, normalized
-unique emails, token expiration indexes, and unique habit-date constraints.
+Schema creation runs transactionally at startup. A fresh database starts at
+schema version 3 with habit scheduling, `user_id` foreign keys, cascading
+deletion, normalized unique emails, token expiration indexes, and unique
+habit-date constraints.
 
-Legacy unversioned databases are not converted. If startup reports an
-unversioned schema, stop the service, remove the configured database, and
-restart to create a fresh versioned database.
+Historical upgrade migrations have been removed. Existing databases must
+already be at schema version 3. Older versioned databases must be upgraded with
+a prior build before starting this version. Unversioned databases are not
+converted.
 
 ## SQLite backup and restore
 
@@ -117,3 +119,18 @@ web/      HTML, CSS, and JavaScript frontend
 
 Task data is currently held in memory and is lost when the server stops.
 User files and generated binaries are excluded from version control.
+
+Habit responses include `interval`, `days_mode`, `start_date`,
+`days_of_week_id`, and a `days_of_week` object containing boolean `sunday`
+through `saturday` fields.
+`PUT /api/add_habit` and `PUT /api/edit_habit` accept these optional headers:
+
+- `X-Habit-Interval`: a positive integer number of days.
+- `X-Habit-Days-Mode`: `true` to use selected weekdays, otherwise `false`.
+- `X-Habit-Start-Date`: the `YYYY-MM-DD` anchor for interval schedules.
+- `X-Habit-Days-Of-Week`: a JSON object such as
+  `{"monday":true,"wednesday":true,"friday":true}`.
+
+At least one weekday is required when days mode is enabled. Omitted schedule
+headers use defaults when creating a habit and preserve the stored values when
+editing one.

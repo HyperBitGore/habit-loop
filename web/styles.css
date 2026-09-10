@@ -474,6 +474,72 @@ select {
   font-weight: 750;
 }
 
+.schedule-fields {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.interval-control {
+  display: grid;
+  grid-template-columns: 6rem auto;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+}
+
+.weekday-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.weekday-fields legend {
+  margin-bottom: 0.55rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.weekday-options {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.35rem;
+}
+
+.weekday-options label {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 2.4rem;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  color: var(--ink-soft);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.weekday-options label:has(input:checked) {
+  border-color: var(--charcoal);
+  color: #ffffff;
+  background: var(--charcoal);
+}
+
+.weekday-options label:has(input:focus-visible) {
+  outline: 3px solid rgb(118 110 85 / 38%);
+  outline-offset: 2px;
+}
+
+.weekday-options input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  opacity: 0;
+}
+
 .todo-popup p {
   margin-bottom: 0;
   color: var(--ink-soft);
@@ -549,7 +615,14 @@ select {
 }
 
 .habit-calendar-day {
-  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.habit-calendar-day.is-not-targeted {
+  border-color: transparent;
+  color: #99968d;
+  background: #e4e2dc;
 }
 
 .habit-calendar-day.is-complete {

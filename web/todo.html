@@ -116,6 +116,30 @@
         <form id="habit-form">
           <label for="habit-name">Habit Name</label>
           <input id="habit-name" name="name" type="text" required />
+          <label for="habit-schedule-mode">Schedule</label>
+          <select id="habit-schedule-mode" name="scheduleMode">
+            <option value="interval">Every few days</option>
+            <option value="days">Days of the week</option>
+          </select>
+          <div id="habit-interval-fields" class="schedule-fields">
+            <label for="habit-interval">Repeat every</label>
+            <div class="interval-control">
+              <input id="habit-interval" name="interval" type="number" min="1" step="1" value="1" required />
+              <span>days</span>
+            </div>
+          </div>
+          <fieldset id="habit-weekday-fields" class="weekday-fields" hidden>
+            <legend>Show on</legend>
+            <div class="weekday-options">
+              <label><input type="checkbox" data-day="sunday" />Sun</label>
+              <label><input type="checkbox" data-day="monday" />Mon</label>
+              <label><input type="checkbox" data-day="tuesday" />Tue</label>
+              <label><input type="checkbox" data-day="wednesday" />Wed</label>
+              <label><input type="checkbox" data-day="thursday" />Thu</label>
+              <label><input type="checkbox" data-day="friday" />Fri</label>
+              <label><input type="checkbox" data-day="saturday" />Sat</label>
+            </div>
+          </fieldset>
           <p id="habit-error" class="auth-error" role="alert" hidden></p>
           <button type="submit">Save</button>
         </form>
@@ -129,6 +153,30 @@
         <form id="habit-detail-form">
           <label for="habit-detail-name">Habit Name</label>
           <input id="habit-detail-name" name="name" type="text" required />
+          <label for="habit-detail-schedule-mode">Schedule</label>
+          <select id="habit-detail-schedule-mode" name="scheduleMode">
+            <option value="interval">Every few days</option>
+            <option value="days">Days of the week</option>
+          </select>
+          <div id="habit-detail-interval-fields" class="schedule-fields">
+            <label for="habit-detail-interval">Repeat every</label>
+            <div class="interval-control">
+              <input id="habit-detail-interval" name="interval" type="number" min="1" step="1" value="1" required />
+              <span>days</span>
+            </div>
+          </div>
+          <fieldset id="habit-detail-weekday-fields" class="weekday-fields" hidden>
+            <legend>Show on</legend>
+            <div class="weekday-options">
+              <label><input type="checkbox" data-day="sunday" />Sun</label>
+              <label><input type="checkbox" data-day="monday" />Mon</label>
+              <label><input type="checkbox" data-day="tuesday" />Tue</label>
+              <label><input type="checkbox" data-day="wednesday" />Wed</label>
+              <label><input type="checkbox" data-day="thursday" />Thu</label>
+              <label><input type="checkbox" data-day="friday" />Fri</label>
+              <label><input type="checkbox" data-day="saturday" />Sat</label>
+            </div>
+          </fieldset>
           <dl class="habit-stats">
             <div>
               <dt>Total completed</dt>

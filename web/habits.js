@@ -59,6 +59,28 @@ function formatDays (days) {
     return `${days} ${days === 1 ? "day" : "days"}`;
 }
 
+export function shouldDisplayHabit (habit, date) {
+    if (habit.days_mode) {
+        const weekday = [
+            "sunday",
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday"
+        ][new Date(`${date}T00:00:00Z`).getUTCDay()];
+        return Boolean(habit.days_of_week?.[weekday]);
+    }
+
+    const interval = Math.max(1, Number(habit.interval) || 1);
+    const startDate = habit.start_date || date;
+    const selectedTime = Date.parse(`${date}T00:00:00Z`);
+    const startTime = Date.parse(`${startDate}T00:00:00Z`);
+    const elapsedDays = Math.round((selectedTime - startTime) / 86400000);
+    return elapsedDays >= 0 && elapsedDays % interval === 0;
+}
+
 function renderHabitCalendar () {
     if (!detailHabit) {
         return;
@@ -99,8 +121,11 @@ function renderHabitCalendar () {
         } else if (skippedDates.has(dateValue)) {
             dayElement.classList.add("is-skipped");
             dayElement.setAttribute("aria-label", `${dateValue}, skipped`);
+        } else if (!shouldDisplayHabit(detailHabit, dateValue)) {
+            dayElement.classList.add("is-not-targeted");
+            dayElement.setAttribute("aria-label", `${dateValue}, not scheduled`);
         } else {
-            dayElement.setAttribute("aria-label", dateValue);
+            dayElement.setAttribute("aria-label", `${dateValue}, scheduled`);
         }
         if (dateValue === today) {
             dayElement.classList.add("is-today");
@@ -124,6 +149,13 @@ function openHabitDetail (habit) {
     calendarMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const stats = calculateHabitStats(habit.completions ?? [], habit.skips ?? []);
     document.querySelector("#habit-detail-name").value = habit.name;
+    const scheduleMode = document.querySelector("#habit-detail-schedule-mode");
+    scheduleMode.value = habit.days_mode ? "days" : "interval";
+    document.querySelector("#habit-detail-interval").value = Math.max(1, Number(habit.interval) || 1);
+    for (const checkbox of document.querySelectorAll("#habit-detail-weekday-fields input[data-day]")) {
+        checkbox.checked = Boolean(habit.days_of_week?.[checkbox.dataset.day]);
+    }
+    scheduleMode.dispatchEvent(new Event("change"));
     document.querySelector("#habit-total-completions").textContent =
         formatDays(stats.totalCompletions);
     document.querySelector("#habit-current-streak").textContent =
@@ -145,7 +177,7 @@ export function closeHabitDetail () {
 function renderHabits (habits, date) {
     const habitList = document.querySelector("#habit-list");
     habitList.replaceChildren();
-    for (const habit of habits) {
+    for (const habit of habits.filter((habit) => shouldDisplayHabit(habit, date))) {
         const listItem = document.createElement("li");
 
         const habitName = document.createElement("span");
@@ -283,12 +315,22 @@ export async function unskipHabit (habitID, date) {
     }
 }
 
-export async function addHabit (name) {
+function scheduleHeaders (schedule) {
+    return {
+        "X-Habit-Interval": String(schedule.interval),
+        "X-Habit-Days-Mode": String(schedule.daysMode),
+        "X-Habit-Days-Of-Week": JSON.stringify(schedule.daysOfWeek)
+    };
+}
+
+export async function addHabit (name, schedule, startDate) {
     const response = await apiFetch("/api/add_habit", {
         method: "PUT",
         headers: {
             "X-Habit-Name": name,
-            "X-Habit-Completions": JSON.stringify([])
+            "X-Habit-Completions": JSON.stringify([]),
+            "X-Habit-Start-Date": startDate,
+            ...scheduleHeaders(schedule)
         }
     });
 
@@ -297,7 +339,7 @@ export async function addHabit (name) {
     }
 }
 
-export async function saveSelectedHabit (name, date) {
+export async function saveSelectedHabit (name, date, schedule) {
     if (!detailHabit) {
         return;
     }
@@ -306,7 +348,8 @@ export async function saveSelectedHabit (name, date) {
         headers: {
             "X-Habit-ID": String(detailHabit.id),
             "X-Habit-Name": name,
-            "X-Habit-Completions": JSON.stringify(detailHabit.completions ?? [])
+            "X-Habit-Completions": JSON.stringify(detailHabit.completions ?? []),
+            ...scheduleHeaders(schedule)
         }
     });
     if (!response.ok) {

@@ -25,7 +25,7 @@ func TestFreshDatabaseCreatesVersionedSchema(t *testing.T) {
 	}
 	for _, table := range []string{
 		"users", "todos", "habits", "completions", "skips",
-		"sessions", "email_verifications", "password_resets",
+		"days_of_week", "sessions", "email_verifications", "password_resets",
 	} {
 		exists, err := tableExists(db, table)
 		if err != nil {
@@ -59,6 +59,28 @@ func TestVersionedDatabaseStartupIsIdempotent(t *testing.T) {
 	}
 	if migrations != 1 {
 		t.Fatalf("migration count = %d, want 1", migrations)
+	}
+}
+
+func TestOlderVersionedDatabaseIsRejected(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old-version.db")
+	db, err := InitDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("UPDATE schema_migrations SET version = 2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = InitDB(path)
+	if err == nil {
+		t.Fatal("older database version was accepted")
+	}
+	if !strings.Contains(err.Error(), "no longer supported") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -146,5 +168,12 @@ func TestSchemaEnforcesOwnershipAndUniqueHabitDates(t *testing.T) {
 	}
 	if habits != 0 || completions != 0 {
 		t.Fatalf("cascade failed: habits=%d completions=%d", habits, completions)
+	}
+	var daysOfWeek int
+	if err := db.QueryRow("SELECT COUNT(*) FROM days_of_week").Scan(&daysOfWeek); err != nil {
+		t.Fatal(err)
+	}
+	if daysOfWeek != 0 {
+		t.Fatalf("habit schedule cleanup failed: days_of_week=%d", daysOfWeek)
 	}
 }

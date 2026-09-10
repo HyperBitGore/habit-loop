@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-const currentSchemaVersion = 1
+const currentSchemaVersion = 3
 
 func runMigrations(db *sql.DB) error {
 	hasMigrationsTable, err := tableExists(db, "schema_migrations")
@@ -20,15 +20,7 @@ func runMigrations(db *sql.DB) error {
 		if hasExistingSchema {
 			return fmt.Errorf("unversioned database schema detected; remove the database file at DATABASE_PATH and restart")
 		}
-		if _, err := db.Exec(`
-			CREATE TABLE schema_migrations (
-				version INTEGER PRIMARY KEY,
-				applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-			)
-		`); err != nil {
-			return fmt.Errorf("create schema migrations table: %w", err)
-		}
-		return createVersionOneSchema(db)
+		return createCurrentSchema(db, true)
 	}
 
 	var version int
@@ -38,30 +30,51 @@ func runMigrations(db *sql.DB) error {
 	if version > currentSchemaVersion {
 		return fmt.Errorf("database schema version %d is newer than supported version %d", version, currentSchemaVersion)
 	}
-	if version == 0 {
-		hasExistingSchema, err := applicationSchemaExists(db)
-		if err != nil {
-			return err
+	if version < currentSchemaVersion {
+		if version == 0 {
+			hasExistingSchema, err := applicationSchemaExists(db)
+			if err != nil {
+				return err
+			}
+			if hasExistingSchema {
+				return fmt.Errorf("unversioned database schema detected; remove the database file at DATABASE_PATH and restart")
+			}
+			return createCurrentSchema(db, false)
 		}
-		if hasExistingSchema {
-			return fmt.Errorf("unversioned database schema detected; remove the database file at DATABASE_PATH and restart")
-		}
-		return createVersionOneSchema(db)
+		return fmt.Errorf(
+			"database schema version %d is no longer supported; migrate it to version %d before using this build",
+			version,
+			currentSchemaVersion,
+		)
 	}
 	return nil
 }
 
-func createVersionOneSchema(db *sql.DB) error {
+func createCurrentSchema(db *sql.DB, createMigrationsTable bool) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+
+	if createMigrationsTable {
+		if _, err := tx.Exec(`
+			CREATE TABLE schema_migrations (
+				version INTEGER PRIMARY KEY,
+				applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)
+		`); err != nil {
+			return fmt.Errorf("create schema migrations table: %w", err)
+		}
+	}
 	if err := createSchema(tx); err != nil {
 		return err
 	}
-	if _, err := tx.Exec("INSERT INTO schema_migrations(version) VALUES (?)", currentSchemaVersion); err != nil {
-		return fmt.Errorf("record schema migration: %w", err)
+	if _, err := tx.Exec(
+		"INSERT INTO schema_migrations(version) VALUES (?)",
+		currentSchemaVersion,
+	); err != nil {
+		return fmt.Errorf("record schema version: %w", err)
 	}
 	return tx.Commit()
 }
@@ -87,10 +100,24 @@ func createSchema(tx *sql.Tx) error {
 			date TEXT NOT NULL,
 			complete BOOLEAN NOT NULL DEFAULT FALSE
 		)`,
+		`CREATE TABLE days_of_week (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			sunday BOOLEAN NOT NULL DEFAULT FALSE CHECK (sunday IN (0, 1)),
+			monday BOOLEAN NOT NULL DEFAULT FALSE CHECK (monday IN (0, 1)),
+			tuesday BOOLEAN NOT NULL DEFAULT FALSE CHECK (tuesday IN (0, 1)),
+			wednesday BOOLEAN NOT NULL DEFAULT FALSE CHECK (wednesday IN (0, 1)),
+			thursday BOOLEAN NOT NULL DEFAULT FALSE CHECK (thursday IN (0, 1)),
+			friday BOOLEAN NOT NULL DEFAULT FALSE CHECK (friday IN (0, 1)),
+			saturday BOOLEAN NOT NULL DEFAULT FALSE CHECK (saturday IN (0, 1))
+		)`,
 		`CREATE TABLE habits (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			name TEXT NOT NULL
+			name TEXT NOT NULL,
+			interval INTEGER NOT NULL DEFAULT 1 CHECK (interval > 0),
+			days_mode BOOLEAN NOT NULL DEFAULT FALSE CHECK (days_mode IN (0, 1)),
+			start_date TEXT NOT NULL DEFAULT CURRENT_DATE,
+			days_of_week_id INTEGER UNIQUE REFERENCES days_of_week(id) ON DELETE SET NULL
 		)`,
 		`CREATE TABLE completions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,6 +154,12 @@ func createSchema(tx *sql.Tx) error {
 		`CREATE INDEX sessions_expiry_idx ON sessions(expires_at)`,
 		`CREATE INDEX verification_expiry_idx ON email_verifications(expires_at)`,
 		`CREATE INDEX reset_expiry_idx ON password_resets(expires_at)`,
+		`CREATE TRIGGER habits_days_of_week_cleanup
+			AFTER DELETE ON habits
+			WHEN OLD.days_of_week_id IS NOT NULL
+			BEGIN
+				DELETE FROM days_of_week WHERE id = OLD.days_of_week_id;
+			END`,
 		`CREATE TRIGGER users_email_insert_guard
 			BEFORE INSERT ON users
 			WHEN NEW.email_normalized IS NOT NULL
@@ -192,7 +225,7 @@ func applicationSchemaExists(db *sql.DB) (bool, error) {
 		FROM sqlite_master
 		WHERE type = 'table'
 		  AND name IN (
-			'users', 'todos', 'habits', 'completions', 'skips',
+			'users', 'todos', 'habits', 'days_of_week', 'completions', 'skips',
 			'sessions', 'email_verifications', 'password_resets'
 		  )
 	`).Scan(&count)

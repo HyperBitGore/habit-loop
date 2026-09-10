@@ -6,30 +6,56 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
 var errHabitNotFound = errors.New("habit not found")
 
+type DaysOfWeek struct {
+	Sunday    bool `json:"sunday"`
+	Monday    bool `json:"monday"`
+	Tuesday   bool `json:"tuesday"`
+	Wednesday bool `json:"wednesday"`
+	Thursday  bool `json:"thursday"`
+	Friday    bool `json:"friday"`
+	Saturday  bool `json:"saturday"`
+}
+
 type Habit struct {
-	Name        string      `json:"name"`
-	Completions []time.Time `json:"completions"`
-	Skips       []time.Time `json:"skips"`
-	ID          uint64      `json:"id"`
+	Name         string      `json:"name"`
+	Completions  []time.Time `json:"completions"`
+	Skips        []time.Time `json:"skips"`
+	DaysOfWeek   DaysOfWeek  `json:"days_of_week"`
+	DaysOfWeekID *uint64     `json:"days_of_week_id"`
+	ID           uint64      `json:"id"`
+	Interval     int         `json:"interval"`
+	DaysMode     bool        `json:"days_mode"`
+	StartDate    string      `json:"start_date"`
 }
 
 func getUserHabits(db *sql.DB, userID int) ([]Habit, error) {
 	rows, err := db.Query(`
-		SELECT h.id, h.name, 'completion', c.date
+		SELECT h.id, h.name, h.interval, h.days_mode, h.start_date, h.days_of_week_id,
+		       COALESCE(d.sunday, FALSE), COALESCE(d.monday, FALSE),
+		       COALESCE(d.tuesday, FALSE), COALESCE(d.wednesday, FALSE),
+		       COALESCE(d.thursday, FALSE), COALESCE(d.friday, FALSE),
+		       COALESCE(d.saturday, FALSE), 'completion', c.date
 		FROM habits h
+		LEFT JOIN days_of_week d ON d.id = h.days_of_week_id
 		LEFT JOIN completions c ON c.habit_id = h.id
 		WHERE h.user_id = ?
 		UNION ALL
-		SELECT h.id, h.name, 'skip', s.date
+		SELECT h.id, h.name, h.interval, h.days_mode, h.start_date, h.days_of_week_id,
+		       COALESCE(d.sunday, FALSE), COALESCE(d.monday, FALSE),
+		       COALESCE(d.tuesday, FALSE), COALESCE(d.wednesday, FALSE),
+		       COALESCE(d.thursday, FALSE), COALESCE(d.friday, FALSE),
+		       COALESCE(d.saturday, FALSE), 'skip', s.date
 		FROM habits h
+		LEFT JOIN days_of_week d ON d.id = h.days_of_week_id
 		LEFT JOIN skips s ON s.habit_id = h.id
 		WHERE h.user_id = ?
-		ORDER BY 2, 1, 4
+		ORDER BY 2, 1, 15
 	`, userID, userID)
 	if err != nil {
 		return nil, err
@@ -41,13 +67,47 @@ func getUserHabits(db *sql.DB, userID int) ([]Habit, error) {
 	for rows.Next() {
 		var id uint64
 		var name, kind string
+		var interval int
+		var daysMode bool
+		var startDate string
+		var daysOfWeekID sql.NullInt64
+		var daysOfWeek DaysOfWeek
 		var date sql.NullString
-		if err := rows.Scan(&id, &name, &kind, &date); err != nil {
+		if err := rows.Scan(
+			&id,
+			&name,
+			&interval,
+			&daysMode,
+			&startDate,
+			&daysOfWeekID,
+			&daysOfWeek.Sunday,
+			&daysOfWeek.Monday,
+			&daysOfWeek.Tuesday,
+			&daysOfWeek.Wednesday,
+			&daysOfWeek.Thursday,
+			&daysOfWeek.Friday,
+			&daysOfWeek.Saturday,
+			&kind,
+			&date,
+		); err != nil {
 			return nil, err
 		}
 		habit := habitsByID[id]
 		if habit == nil {
-			habit = &Habit{ID: id, Name: name, Completions: []time.Time{}, Skips: []time.Time{}}
+			habit = &Habit{
+				ID:          id,
+				Name:        name,
+				Interval:    interval,
+				DaysMode:    daysMode,
+				StartDate:   startDate,
+				DaysOfWeek:  daysOfWeek,
+				Completions: []time.Time{},
+				Skips:       []time.Time{},
+			}
+			if daysOfWeekID.Valid {
+				id := uint64(daysOfWeekID.Int64)
+				habit.DaysOfWeekID = &id
+			}
 			habitsByID[id] = habit
 			order = append(order, id)
 		}
@@ -72,6 +132,80 @@ func getUserHabits(db *sql.DB, userID int) ([]Habit, error) {
 		habits = append(habits, *habitsByID[id])
 	}
 	return habits, nil
+}
+
+func (days DaysOfWeek) anyEnabled() bool {
+	return days.Sunday || days.Monday || days.Tuesday || days.Wednesday ||
+		days.Thursday || days.Friday || days.Saturday
+}
+
+func parseHabitSchedule(r *http.Request) (int, bool, DaysOfWeek, error) {
+	interval := 1
+	if value := strings.TrimSpace(r.Header.Get("X-Habit-Interval")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 {
+			return 0, false, DaysOfWeek{}, errors.New("Habit interval must be at least 1")
+		}
+		interval = parsed
+	}
+
+	daysMode := false
+	if value := strings.TrimSpace(r.Header.Get("X-Habit-Days-Mode")); value != "" {
+		parsed, err := strconv.ParseBool(value)
+		if err != nil {
+			return 0, false, DaysOfWeek{}, errors.New("Invalid habit days mode")
+		}
+		daysMode = parsed
+	}
+
+	var daysOfWeek DaysOfWeek
+	if value := strings.TrimSpace(r.Header.Get("X-Habit-Days-Of-Week")); value != "" {
+		if err := json.Unmarshal([]byte(value), &daysOfWeek); err != nil {
+			return 0, false, DaysOfWeek{}, errors.New("Invalid habit days of week")
+		}
+	}
+	return interval, daysMode, daysOfWeek, nil
+}
+
+func validateHabitSchedule(daysMode bool, daysOfWeek DaysOfWeek) error {
+	if daysMode && !daysOfWeek.anyEnabled() {
+		return errors.New("At least one day of the week must be enabled")
+	}
+	return nil
+}
+
+func parseHabitStartDate(r *http.Request) (string, error) {
+	value := strings.TrimSpace(r.Header.Get("X-Habit-Start-Date"))
+	if value == "" {
+		return time.Now().UTC().Format("2006-01-02"), nil
+	}
+	date, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return "", errors.New("Invalid habit start date")
+	}
+	return date.Format("2006-01-02"), nil
+}
+
+func insertDaysOfWeek(tx *sql.Tx, days DaysOfWeek) (int64, error) {
+	result, err := tx.Exec(`
+		INSERT INTO days_of_week (
+			sunday, monday, tuesday, wednesday, thursday, friday, saturday
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, days.Sunday, days.Monday, days.Tuesday, days.Wednesday, days.Thursday, days.Friday, days.Saturday)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func updateDaysOfWeek(tx *sql.Tx, id int64, days DaysOfWeek) error {
+	_, err := tx.Exec(`
+		UPDATE days_of_week
+		SET sunday = ?, monday = ?, tuesday = ?, wednesday = ?,
+		    thursday = ?, friday = ?, saturday = ?
+		WHERE id = ?
+	`, days.Sunday, days.Monday, days.Tuesday, days.Wednesday, days.Thursday, days.Friday, days.Saturday, id)
+	return err
 }
 
 func parseHabitCompletions(value string) ([]time.Time, error) {
@@ -125,6 +259,20 @@ func HandleAddHabit(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "Invalid habit completions")
 		return
 	}
+	interval, daysMode, daysOfWeek, err := parseHabitSchedule(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := validateHabitSchedule(daysMode, daysOfWeek); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	startDate, err := parseHabitStartDate(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	user := requestUser(w, r)
 	if user == nil {
 		return
@@ -135,7 +283,15 @@ func HandleAddHabit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(r.Context(), "INSERT INTO habits (user_id, name) VALUES (?, ?)", user.ID, name)
+	daysOfWeekID, err := insertDaysOfWeek(tx, daysOfWeek)
+	if err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `
+		INSERT INTO habits (user_id, name, interval, days_mode, start_date, days_of_week_id)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, user.ID, name, interval, daysMode, startDate, daysOfWeekID)
 	if err != nil {
 		writeHabitMutationError(w, err)
 		return
@@ -212,6 +368,11 @@ func HandleEditHabit(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "Invalid habit completions")
 		return
 	}
+	interval, daysMode, daysOfWeek, err := parseHabitSchedule(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	user := requestUser(w, r)
 	if user == nil {
 		return
@@ -222,7 +383,77 @@ func HandleEditHabit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(r.Context(), "UPDATE habits SET name = ? WHERE id = ? AND user_id = ?", name, id, user.ID)
+	var daysOfWeekID sql.NullInt64
+	var storedInterval int
+	var storedDaysMode bool
+	var storedStartDate string
+	var storedDaysOfWeek DaysOfWeek
+	if err := tx.QueryRowContext(r.Context(), `
+		SELECT h.interval, h.days_mode, h.start_date, h.days_of_week_id,
+		       COALESCE(d.sunday, FALSE), COALESCE(d.monday, FALSE),
+		       COALESCE(d.tuesday, FALSE), COALESCE(d.wednesday, FALSE),
+		       COALESCE(d.thursday, FALSE), COALESCE(d.friday, FALSE),
+		       COALESCE(d.saturday, FALSE)
+		FROM habits h
+		LEFT JOIN days_of_week d ON d.id = h.days_of_week_id
+		WHERE h.id = ? AND h.user_id = ?
+	`, id, user.ID).Scan(
+		&storedInterval,
+		&storedDaysMode,
+		&storedStartDate,
+		&daysOfWeekID,
+		&storedDaysOfWeek.Sunday,
+		&storedDaysOfWeek.Monday,
+		&storedDaysOfWeek.Tuesday,
+		&storedDaysOfWeek.Wednesday,
+		&storedDaysOfWeek.Thursday,
+		&storedDaysOfWeek.Friday,
+		&storedDaysOfWeek.Saturday,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeHabitMutationError(w, errHabitNotFound)
+		} else {
+			writeHabitMutationError(w, err)
+		}
+		return
+	}
+	if r.Header.Get("X-Habit-Interval") == "" {
+		interval = storedInterval
+	}
+	if r.Header.Get("X-Habit-Days-Mode") == "" {
+		daysMode = storedDaysMode
+	}
+	if r.Header.Get("X-Habit-Days-Of-Week") == "" {
+		daysOfWeek = storedDaysOfWeek
+	}
+	startDate := storedStartDate
+	if r.Header.Get("X-Habit-Start-Date") != "" {
+		startDate, err = parseHabitStartDate(r)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if err := validateHabitSchedule(daysMode, daysOfWeek); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !daysOfWeekID.Valid {
+		insertedID, err := insertDaysOfWeek(tx, daysOfWeek)
+		if err != nil {
+			writeHabitMutationError(w, err)
+			return
+		}
+		daysOfWeekID = sql.NullInt64{Int64: insertedID, Valid: true}
+	} else if err := updateDaysOfWeek(tx, daysOfWeekID.Int64, daysOfWeek); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `
+		UPDATE habits
+		SET name = ?, interval = ?, days_mode = ?, start_date = ?, days_of_week_id = ?
+		WHERE id = ? AND user_id = ?
+	`, name, interval, daysMode, startDate, daysOfWeekID.Int64, id, user.ID)
 	if err != nil {
 		writeHabitMutationError(w, err)
 		return
