@@ -62,6 +62,21 @@ button {
   transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
 }
 
+.button-link {
+  display: inline-block;
+  border: 1px solid #c7ced9;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.9rem;
+  color: #25324a;
+  background: #ffffff;
+  text-decoration: none;
+}
+
+.button-link:hover {
+  border-color: #526581;
+  background: #f7f9fb;
+}
+
 button:hover {
   border-color: #526581;
   background: #f7f9fb;
@@ -347,6 +362,12 @@ li:focus-visible {
   font-size: 2rem;
 }
 
+.auth-card h2 {
+  margin: 1rem 0 0;
+  color: #101828;
+  font-size: 1.25rem;
+}
+
 .eyebrow {
   margin: 0;
   color: #526581;
@@ -408,6 +429,13 @@ li:focus-visible {
 .auth-secondary:hover {
   border-color: #526581;
   background: #f7f9fb;
+}
+
+.auth-secondary-link {
+  display: block;
+  padding: 0.7rem 0.8rem;
+  text-align: center;
+  text-decoration: none;
 }
 
 .popup-actions {

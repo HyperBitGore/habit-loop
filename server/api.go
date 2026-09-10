@@ -3,14 +3,12 @@ package main
 // recieve api requests and send to other api file functions
 
 // TODO
-//	- disallow login till user verified, unless admin
-//		- unverified users in seperate table
-//	- need privacy policy, terms, cookie notice?, email policy
-//	- user personal editing page
-//	- write tests
 //	- implement security fixes
 //	- change css to actually look good
+//		- prob switch to react, just use fable with a detailed doc
+//	- need privacy policy, terms, cookie notice?, email policy
 //	- cloudflare turnstile
+//	- write tests
 
 import (
 	"bufio"
@@ -82,6 +80,8 @@ func main() {
 	mux.HandleFunc("/api/logout", HandleLogout)
 	mux.HandleFunc("/api/create_account", HandleCreateAccount)
 	mux.HandleFunc("/api/verify-email", HandleVerifyEmail)
+	mux.HandleFunc("/api/request-password-reset", HandleRequestPasswordReset)
+	mux.HandleFunc("/api/reset-password", HandleResetPassword)
 	mux.Handle("/api/register_user", adminMiddleware(
 		http.HandlerFunc(HandleRegisterUser),
 	))
@@ -99,6 +99,9 @@ func main() {
 	))
 	mux.Handle("/api/current_user", authMiddleware(
 		http.HandlerFunc(HandleCurrentUser),
+	))
+	mux.Handle("/api/profile", authMiddleware(
+		http.HandlerFunc(HandleUpdateProfile),
 	))
 	mux.Handle("/api/get_habits", authMiddleware(
 		http.HandlerFunc(HandleGetHabits),

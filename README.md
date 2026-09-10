@@ -20,6 +20,13 @@ go run .
 Open <http://localhost:8081>. On the first run, the server prompts for an
 admin name and password, then stores the account in `server/users/`.
 
+Set `APP_BASE_URL` to the public URL when running behind a proxy or on a
+deployed host so verification emails contain an absolute link, for example:
+
+```bash
+export APP_BASE_URL=https://habit-loop.example.com
+```
+
 To build a binary instead:
 
 ```bash

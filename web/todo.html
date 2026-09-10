@@ -13,7 +13,7 @@
       <div class="header-actions">
         <button id="manage-users" type="button" hidden>Manage Users</button>
         <button id="create-user" type="button" hidden>Create User</button>
-        <button id="change-password" type="button">Change Password</button>
+        <a class="button-link" href="./profile.html">Profile</a>
         <button id="logout" type="button">Logout</button>
         <label for="task-date">Date</label>
         <input id="task-date" type="date" />
@@ -138,21 +138,5 @@
       </section>
     </div>
 
-    <div id="password-popup" class="todo-popup-overlay" hidden>
-      <section class="todo-popup" role="dialog" aria-modal="true" aria-labelledby="password-popup-title">
-        <button id="password-close" type="button">Close</button>
-        <h2 id="password-popup-title">Change Password</h2>
-        <form id="password-form">
-          <label for="current-password">Current Password</label>
-          <input id="current-password" name="currentPassword" type="password" required />
-          <label for="new-password">New Password</label>
-          <input id="new-password" name="newPassword" type="password" required />
-          <label for="confirm-password">Confirm New Password</label>
-          <input id="confirm-password" name="confirmPassword" type="password" required />
-          <p id="password-message" class="auth-error" role="status" hidden></p>
-          <button type="submit">Update Password</button>
-        </form>
-      </section>
-    </div>
   </body>
 </html>

@@ -5,8 +5,7 @@ import {
     getCurrentUser,
     getUsers,
     logout,
-    createUser,
-    setPassword
+    createUser
 } from "./users.js";
 import {
     addHabit,
@@ -61,11 +60,6 @@ const userListPopup = document.querySelector("#user-list-popup");
 const userListCloseButton = document.querySelector("#user-list-close");
 const userList = document.querySelector("#user-list");
 const userListError = document.querySelector("#user-list-error");
-const changePasswordButton = document.querySelector("#change-password");
-const passwordPopup = document.querySelector("#password-popup");
-const passwordCloseButton = document.querySelector("#password-close");
-const passwordForm = document.querySelector("#password-form");
-const passwordMessage = document.querySelector("#password-message");
 
 async function renderUsers () {
     const users = await getUsers();
@@ -227,41 +221,6 @@ manageUsersButton.addEventListener("click", async () => {
 
 userListCloseButton.addEventListener("click", () => {
     userListPopup.hidden = true;
-});
-
-changePasswordButton.addEventListener("click", () => {
-    passwordForm.reset();
-    passwordMessage.classList.remove("is-success");
-    passwordMessage.hidden = true;
-    passwordPopup.hidden = false;
-});
-
-passwordCloseButton.addEventListener("click", () => {
-    passwordPopup.hidden = true;
-});
-
-passwordForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const formData = new FormData(passwordForm);
-    const newPassword = formData.get("newPassword");
-    passwordMessage.hidden = true;
-    if (newPassword !== formData.get("confirmPassword")) {
-        passwordMessage.classList.remove("is-success");
-        passwordMessage.textContent = "New passwords do not match.";
-        passwordMessage.hidden = false;
-        return;
-    }
-    try {
-        await setPassword(formData.get("currentPassword"), newPassword);
-        passwordMessage.textContent = "Password updated.";
-        passwordMessage.classList.add("is-success");
-        passwordMessage.hidden = false;
-        passwordForm.reset();
-    } catch (error) {
-        passwordMessage.classList.remove("is-success");
-        passwordMessage.textContent = error.message;
-        passwordMessage.hidden = false;
-    }
 });
 
 userCloseButton.addEventListener("click", () => {

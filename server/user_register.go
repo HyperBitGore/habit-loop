@@ -10,6 +10,7 @@ import (
 	"html"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -51,8 +52,7 @@ func HandleCreateAccount(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	verificationURL := strings.TrimRight(os.Getenv("APP_BASE_URL"), "/") +
-		"/api/verify-email?token=" + token
+	verificationURL := applicationBaseURL(r) + "/api/verify-email?token=" + url.QueryEscape(token)
 	if err := SendVerificationEmail(account.Email, account.Name, verificationURL); err != nil {
 		if cleanupErr := DeleteUser(database, account.Name, int(userID)); cleanupErr != nil {
 			http.Error(w, "Verification email failed and account cleanup also failed", http.StatusInternalServerError)
@@ -124,13 +124,11 @@ func createRegisteredUser(db *sql.DB, name, email, password string) (int64, stri
 }
 
 func SendVerificationEmail(targetEmail, userName, verificationURL string) error {
-	apiKey := os.Getenv("RESEND_API_KEY")
 	from := os.Getenv("RESEND_FROM_EMAIL")
 	fmt.Printf("from: %v\n", from)
-	if apiKey == "" || from == "" {
+	if from == "" {
 		return fmt.Errorf("RESEND_API_KEY and RESEND_FROM_EMAIL must be configured")
 	}
-
 	payload, err := json.Marshal(map[string]any{
 		"from":    from,
 		"to":      []string{targetEmail},
@@ -144,28 +142,41 @@ func SendVerificationEmail(targetEmail, userName, verificationURL string) error 
 	if err != nil {
 		return err
 	}
+	err = SendEmail(payload)
+	return err
+}
 
-	req, err := http.NewRequest(
-		http.MethodPost,
-		"https://api.resend.com/emails",
-		strings.NewReader(string(payload)),
-	)
+func applicationBaseURL(r *http.Request) string {
+	baseURL := strings.TrimRight(os.Getenv("APP_BASE_URL"), "/")
+	if baseURL != "" {
+		return baseURL
+	}
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+func SendPasswordResetEmail(targetEmail, userName, resetURL string) error {
+	from := os.Getenv("RESEND_FROM_EMAIL")
+	if from == "" {
+		return fmt.Errorf("RESEND_API_KEY and RESEND_FROM_EMAIL must be configured")
+	}
+	payload, err := json.Marshal(map[string]any{
+		"from":    from,
+		"to":      []string{targetEmail},
+		"subject": "Reset your Habit Loop password",
+		"html": fmt.Sprintf(
+			"<p>Hello %s,</p><p><a href=\"%s\">Reset your password</a>.</p><p>This link expires in one hour.</p>",
+			html.EscapeString(userName),
+			html.EscapeString(resetURL),
+		),
+	})
 	if err != nil {
-		fmt.Printf("Error from resend: %v\n", err)
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Resend returned %s", resp.Status)
-	}
-	return nil
+	return SendEmail(payload)
 }
 
 func HandleVerifyEmail(w http.ResponseWriter, r *http.Request) {
@@ -211,4 +222,50 @@ func HandleVerifyEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func CheckEmailVerified(db *sql.DB, name string) (bool, error) {
+	var ver bool
+	err := db.QueryRow(`
+		SELECT email_verified
+		FROM users
+		WHERE name = ?
+	`, name).Scan(&ver)
+	if err == sql.ErrNoRows {
+		return false, nil // user not found
+	}
+	if err != nil {
+		return false, err
+	}
+	return ver, nil
+}
+
+func SendEmail(payload []byte) error {
+	apiKey := os.Getenv("RESEND_API_KEY")
+
+	if apiKey == "" {
+		return fmt.Errorf("RESEND_API_KEY and RESEND_FROM_EMAIL must be configured")
+	}
+
+	req, err := http.NewRequest(
+		http.MethodPost,
+		"https://api.resend.com/emails",
+		strings.NewReader(string(payload)),
+	)
+	if err != nil {
+		fmt.Printf("Error from resend: %v\n", err)
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("Resend returned %s", resp.Status)
+	}
+	return nil
 }

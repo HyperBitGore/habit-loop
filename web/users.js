@@ -95,6 +95,36 @@ export async function login (username, password) {
         throw new Error("Invalid login credentials.");
     }
 }
+
+export async function requestPasswordReset (email) {
+    const response = await fetch("/api/request-password-reset", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ email })
+    });
+    if (!response.ok) {
+        throw new Error(await response.text() || "Unable to request a password reset.");
+    }
+}
+
+export async function resetPassword (token, newPassword) {
+    const response = await fetch("/api/reset-password", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            token,
+            new_password: newPassword
+        })
+    });
+    if (!response.ok) {
+        throw new Error(await response.text() || "Unable to reset password.");
+    }
+}
+
 export async function logout () {
     try {
         await fetch("/api/logout", { method: "POST" });
@@ -141,6 +171,19 @@ export async function getCurrentUser () {
         throw new Error("Unable to determine the current user.");
     }
     return response.json();
+}
+
+export async function updateProfile (name, email) {
+    const response = await fetch("/api/profile", {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ name, email })
+    });
+    if (!response.ok) {
+        throw new Error(await response.text() || "Unable to update profile.");
+    }
 }
 
 export async function getUsers () {
