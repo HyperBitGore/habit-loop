@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -56,16 +57,25 @@ func setupTestApplication(t *testing.T) *fakeEmailSender {
 	accountCreateLimiter = newRateLimiter(100, time.Minute)
 	resetLimiter = newRateLimiter(100, time.Minute)
 	resetAccountLimiter = newRateLimiter(100, time.Minute)
+	previousVerifier := turnstileVerifier
+	turnstileVerifier = func(context.Context, string, string, string) error {
+		return nil
+	}
+	t.Cleanup(func() {
+		turnstileVerifier = previousVerifier
+	})
 	return sender
 }
 
 func LoadConfigForTest() (Config, error) {
 	config := Config{
-		Environment:   "test",
-		ListenAddr:    ":0",
-		DatabasePath:  ":memory:",
-		WebRoot:       "../web",
-		SecureCookies: true,
+		Environment:        "test",
+		ListenAddr:         ":0",
+		DatabasePath:       ":memory:",
+		WebRoot:            "../web",
+		SecureCookies:      true,
+		TurnstileSecret:    "test-secret",
+		TurnstileHostnames: []string{"example.test"},
 	}
 	baseURL, err := url.Parse("https://example.test")
 	config.AppBaseURL = baseURL
@@ -360,6 +370,79 @@ func TestDuplicateHabitCompletionIsIdempotent(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("completion count = %d", count)
+	}
+}
+
+func TestGetUsersSupportsSearchAndCursorPagination(t *testing.T) {
+	setupTestApplication(t)
+	tx, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 205; index++ {
+		name := fmt.Sprintf("user%03d", index)
+		email := fmt.Sprintf("%s@example.com", name)
+		if index == 150 {
+			email = "matching-search@example.com"
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO users (
+				name, email, email_normalized, password_hash, role, email_verified
+			)
+			VALUES (?, ?, ?, 'hash', 'user', TRUE)
+		`, name, email, normalizeEmail(email)); err != nil {
+			tx.Rollback()
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	type userSummary struct {
+		ID    int    `json:"id"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	type userPage struct {
+		Users      []userSummary `json:"users"`
+		NextCursor string        `json:"next_cursor"`
+	}
+	readPage := func(target string) userPage {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, target, nil)
+		response := httptest.NewRecorder()
+		HandleGetUsers(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
+		}
+		var page userPage
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+		return page
+	}
+
+	firstPage := readPage("/api/get_users")
+	if len(firstPage.Users) != 100 || firstPage.NextCursor == "" {
+		t.Fatalf("first page users=%d cursor=%q", len(firstPage.Users), firstPage.NextCursor)
+	}
+	secondPage := readPage("/api/get_users?cursor=" + url.QueryEscape(firstPage.NextCursor))
+	if len(secondPage.Users) != 100 || secondPage.NextCursor == "" {
+		t.Fatalf("second page users=%d cursor=%q", len(secondPage.Users), secondPage.NextCursor)
+	}
+	thirdPage := readPage("/api/get_users?cursor=" + url.QueryEscape(secondPage.NextCursor))
+	if len(thirdPage.Users) != 5 || thirdPage.NextCursor != "" {
+		t.Fatalf("third page users=%d cursor=%q", len(thirdPage.Users), thirdPage.NextCursor)
+	}
+	if firstPage.Users[99].Name >= secondPage.Users[0].Name ||
+		secondPage.Users[99].Name >= thirdPage.Users[0].Name {
+		t.Fatal("cursor pages are not strictly ordered")
+	}
+
+	searchPage := readPage("/api/get_users?search=matching-search")
+	if len(searchPage.Users) != 1 || searchPage.Users[0].Name != "user150" {
+		t.Fatalf("search results = %+v", searchPage.Users)
 	}
 }
 

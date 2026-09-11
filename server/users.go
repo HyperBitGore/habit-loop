@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/mail"
@@ -254,11 +255,15 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var credentials struct {
-		Name     string `json:"name"`
-		Password string `json:"password"`
+		Name           string `json:"name"`
+		Password       string `json:"password"`
+		TurnstileToken string `json:"turnstile_token"`
 	}
 	if err := decodeJSON(w, r, &credentials); err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !requireTurnstile(w, r, credentials.TurnstileToken, "login") {
 		return
 	}
 	if !loginAccountLimiter.allow(strings.ToLower(strings.TrimSpace(credentials.Name))) {
@@ -422,17 +427,52 @@ func HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 		Role          string `json:"role"`
 		EmailVerified bool   `json:"email_verified"`
 	}
+	type userCursor struct {
+		Name string `json:"name"`
+		ID   int    `json:"id"`
+	}
+	type userPage struct {
+		Users      []userSummary `json:"users"`
+		NextCursor string        `json:"next_cursor,omitempty"`
+	}
+
+	search := strings.TrimSpace(r.URL.Query().Get("search"))
+	if len(search) > 100 {
+		writeAPIError(w, http.StatusBadRequest, "Search is too long")
+		return
+	}
+	cursor := userCursor{}
+	if encodedCursor := r.URL.Query().Get("cursor"); encodedCursor != "" {
+		decoded, err := base64.RawURLEncoding.DecodeString(encodedCursor)
+		if err != nil || json.Unmarshal(decoded, &cursor) != nil || cursor.ID < 1 {
+			writeAPIError(w, http.StatusBadRequest, "Invalid user cursor")
+			return
+		}
+	}
+
+	const pageSize = 100
 	rows, err := database.QueryContext(r.Context(), `
 		SELECT id, name, COALESCE(email, ''), role, email_verified
 		FROM users
-		ORDER BY name
-	`)
+		WHERE (
+			? = ''
+			OR instr(lower(name), lower(?)) > 0
+			OR instr(lower(COALESCE(email, '')), lower(?)) > 0
+		)
+		  AND (
+			? = ''
+			OR lower(name) > ?
+			OR (lower(name) = ? AND id > ?)
+		  )
+		ORDER BY lower(name), id
+		LIMIT ?
+	`, search, search, search, cursor.Name, cursor.Name, cursor.Name, cursor.ID, pageSize+1)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "Unable to load users")
 		return
 	}
 	defer rows.Close()
-	users := make([]userSummary, 0)
+	users := make([]userSummary, 0, pageSize+1)
 	for rows.Next() {
 		var user userSummary
 		if err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.EmailVerified); err != nil {
@@ -445,7 +485,21 @@ func HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "Unable to load users")
 		return
 	}
-	writeJSON(w, http.StatusOK, users)
+	page := userPage{Users: users}
+	if len(page.Users) > pageSize {
+		lastUser := page.Users[pageSize-1]
+		encodedCursor, err := json.Marshal(userCursor{
+			Name: strings.ToLower(lastUser.Name),
+			ID:   lastUser.ID,
+		})
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "Unable to load users")
+			return
+		}
+		page.NextCursor = base64.RawURLEncoding.EncodeToString(encodedCursor)
+		page.Users = page.Users[:pageSize]
+	}
+	writeJSON(w, http.StatusOK, page)
 }
 
 func HandleSetPassword(w http.ResponseWriter, r *http.Request) {
@@ -479,10 +533,14 @@ func HandleRequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request struct {
-		Email string `json:"email"`
+		Email          string `json:"email"`
+		TurnstileToken string `json:"turnstile_token"`
 	}
 	if err := decodeJSON(w, r, &request); err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !requireTurnstile(w, r, request.TurnstileToken, "password_reset") {
 		return
 	}
 	normalizedEmail := normalizeEmail(request.Email)

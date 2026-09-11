@@ -48,8 +48,21 @@
             <h2 id="manage-users-title">Manage users</h2>
           </div>
         </div>
+        <label class="user-search" for="user-search">
+          <span>Search users</span>
+          <input
+            id="user-search"
+            type="search"
+            placeholder="Search by username or email"
+            autocomplete="off"
+            maxlength="100"
+          />
+        </label>
         <p id="user-list-error" class="auth-error" role="alert" hidden></p>
-        <div id="user-list" class="user-list"></div>
+        <p id="user-list-empty" class="user-list-message" hidden>No users found.</p>
+        <div id="user-list" class="user-list" aria-live="polite"></div>
+        <div id="user-list-sentinel" class="user-list-sentinel" aria-hidden="true"></div>
+        <p id="user-list-loading" class="user-list-message" role="status" hidden>Loading users...</p>
       </section>
 
       <a class="page-link" href="./todo.html">Back to habits and todos</a>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -13,10 +14,7 @@ import (
 )
 
 // TODO
-//	- admin page, infinite/searchable user list
-//	- update readme
 //	- use termly for legal agreements on website
-//	- cloudflare turnstile
 //	- adsense
 
 var (
@@ -86,7 +84,10 @@ func requireHTTPSMiddleware(cfg Config, next http.Handler) http.Handler {
 }
 
 func main() {
-	cfg, err := LoadConfig()
+	configPath := flag.String("config", "server.cfg", "path to the server configuration file")
+	flag.Parse()
+
+	cfg, err := LoadConfig(*configPath)
 	if err != nil {
 		log.Fatal(err)
 	}

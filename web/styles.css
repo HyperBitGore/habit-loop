@@ -690,6 +690,12 @@ select {
   color: var(--success);
 }
 
+.turnstile-widget {
+  width: 100%;
+  min-height: 65px;
+  overflow: hidden;
+}
+
 .auth-card > button {
   margin-top: 0.25rem;
 }
@@ -741,13 +747,42 @@ select {
   gap: 0.65rem;
 }
 
+.user-search {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
 .user-list-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 8rem auto auto;
+  grid-template-columns: minmax(10rem, 1fr) minmax(10rem, 1.25fr) 8rem auto auto;
   gap: 0.65rem;
   align-items: center;
   padding-top: 0.65rem;
   border-top: 1px solid var(--line);
+}
+
+.user-list-email {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-list-message {
+  margin: 1rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.user-list-sentinel {
+  min-height: 1px;
 }
 
 .danger-button {
@@ -790,7 +825,12 @@ select {
   }
 
   .user-list-row {
-    grid-template-columns: 1fr 7rem;
+    grid-template-columns: minmax(0, 1fr) 7rem;
+  }
+
+  .user-list-email {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .user-list-row button {

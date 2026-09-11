@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Log in | Habit Loop</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script id="turnstile-script" src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
     <script type="module" src="./users.js"></script>
   </head>
   <body>
@@ -20,6 +21,7 @@
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required />
 
+        <div id="login-turnstile" class="turnstile-widget" aria-label="Bot verification"></div>
         <p id="login-error" class="auth-error" role="alert" hidden></p>
         <button type="submit" id="login-button">Log in</button>
         <button type="button" id="open-registration-button" class="auth-secondary">Create an account</button>
@@ -42,6 +44,7 @@
             <label for="registration-password-confirmation">Confirm password</label>
             <input id="registration-password-confirmation" name="password-confirmation" type="password" autocomplete="new-password" minlength="8" required />
 
+            <div id="registration-turnstile" class="turnstile-widget" aria-label="Bot verification"></div>
             <p id="registration-error" class="auth-error" role="alert" hidden></p>
             <div class="popup-actions">
               <button type="submit">Register</button>

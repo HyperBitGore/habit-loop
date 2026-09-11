@@ -8,3 +8,6 @@ frontend_style_changes.txt
 *.txt
 *.db-shm
 *.db-wal
+.claude
+server/server.cfg
+server.cfg

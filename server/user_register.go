@@ -19,12 +19,16 @@ func HandleCreateAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var account struct {
-		Name     string `json:"name"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Name           string `json:"name"`
+		Email          string `json:"email"`
+		Password       string `json:"password"`
+		TurnstileToken string `json:"turnstile_token"`
 	}
 	if err := decodeJSON(w, r, &account); err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !requireTurnstile(w, r, account.TurnstileToken, "signup") {
 		return
 	}
 	userID, token, err := createUnverifiedUser(r.Context(), database, account.Name, account.Email, account.Password, "user", "account")

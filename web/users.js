@@ -1,9 +1,24 @@
+import { createTurnstile, requireTurnstileToken } from "./turnstile.js";
+
 const loginForm = document.querySelector("#login-form");
 const registrationPopup = document.querySelector("#registration-popup");
 const registrationForm = document.querySelector("#registration-form");
 const registrationName = document.querySelector("#registration-name");
 const openRegistrationButton = document.querySelector("#open-registration-button");
 const closeRegistrationButton = document.querySelector("#close-registration-button");
+const loginTurnstile = loginForm
+    ? trackTurnstile(createTurnstile(document.querySelector("#login-turnstile"), "login"))
+    : null;
+let registrationTurnstile = null;
+
+function trackTurnstile (promise) {
+    promise.catch(() => {});
+    return promise;
+}
+
+function resetTurnstile (promise) {
+    promise?.then((widget) => widget.reset()).catch(() => {});
+}
 
 async function responseError(response, fallback) {
     try {
@@ -17,12 +32,19 @@ async function responseError(response, fallback) {
 function closeRegistrationPopup () {
     registrationPopup.hidden = true;
     registrationForm.reset();
+    resetTurnstile(registrationTurnstile);
     document.querySelector("#registration-error").hidden = true;
 }
 
 if (openRegistrationButton) {
     openRegistrationButton.addEventListener("click", () => {
         registrationPopup.hidden = false;
+        registrationTurnstile ??= trackTurnstile(
+            createTurnstile(
+                document.querySelector("#registration-turnstile"),
+                "signup"
+            )
+        );
         registrationName.focus();
     });
 }
@@ -56,7 +78,13 @@ if (registrationForm) {
         }
 
         try {
-            await registerUser(formData.get("name"), formData.get("email"), password);
+            const widget = await registrationTurnstile;
+            await registerUser(
+                formData.get("name"),
+                formData.get("email"),
+                password,
+                requireTurnstileToken(widget)
+            );
             closeRegistrationPopup();
             document.querySelector("#name").value = formData.get("name");
             const loginError = document.querySelector("#login-error");
@@ -64,6 +92,7 @@ if (registrationForm) {
             loginError.classList.add("is-success");
             loginError.hidden = false;
         } catch (error) {
+            resetTurnstile(registrationTurnstile);
             errorMessage.textContent = error.message;
             errorMessage.hidden = false;
         }
@@ -79,16 +108,22 @@ if (loginForm) {
         errorMessage.hidden = true;
 
         try {
-            await login(formData.get("name"), formData.get("password"));
+            const widget = await loginTurnstile;
+            await login(
+                formData.get("name"),
+                formData.get("password"),
+                requireTurnstileToken(widget)
+            );
             window.location.assign("./todo.html");
         } catch (error) {
+            resetTurnstile(loginTurnstile);
             errorMessage.textContent = error.message;
             errorMessage.hidden = false;
         }
     });
 }
 
-export async function login (username, password) {
+export async function login (username, password, turnstileToken) {
     const response = await fetch("/api/login", {
         method: "POST",
         headers: {
@@ -96,22 +131,26 @@ export async function login (username, password) {
         },
         body: JSON.stringify({
             name: username,
-            password: password
+            password: password,
+            turnstile_token: turnstileToken
         })
     });
 
     if (!response.ok) {
-        throw new Error("Invalid login credentials.");
+        throw new Error(await responseError(response, "Invalid login credentials."));
     }
 }
 
-export async function requestPasswordReset (email) {
+export async function requestPasswordReset (email, turnstileToken) {
     const response = await fetch("/api/request-password-reset", {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
         },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({
+            email,
+            turnstile_token: turnstileToken
+        })
     });
     if (!response.ok) {
         throw new Error(await responseError(response, "Unable to request a password reset."));
@@ -142,7 +181,7 @@ export async function logout () {
     }
 }
 
-export async function registerUser (name, email, password) {
+export async function registerUser (name, email, password, turnstileToken) {
     const response = await fetch("/api/create_account", {
         method: "POST",
         headers: {
@@ -151,7 +190,8 @@ export async function registerUser (name, email, password) {
         body: JSON.stringify({
             name,
             email,
-            password
+            password,
+            turnstile_token: turnstileToken
         })
     });
 
@@ -199,8 +239,16 @@ export async function updateProfile (name, email, currentPassword) {
     return response.json();
 }
 
-export async function getUsers () {
-    const response = await fetch("/api/get_users");
+export async function getUsers ({ search = "", cursor = "", signal } = {}) {
+    const parameters = new URLSearchParams();
+    if (search) {
+        parameters.set("search", search);
+    }
+    if (cursor) {
+        parameters.set("cursor", cursor);
+    }
+    const query = parameters.toString();
+    const response = await fetch(`/api/get_users${query ? `?${query}` : ""}`, { signal });
     if (!response.ok) {
         throw new Error("Unable to load users.");
     }
