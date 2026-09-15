@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Habit Loop</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./site-config.js"></script>
     <script type="module" src="./main.js"></script>
   </head>
   <body>
     <header class="page-header">
-      <a class="wordmark" href="./todo.html">Habit Loop</a>
+      <a class="wordmark" data-site-title href="./todo.html">Habit Loop</a>
       <div class="settings-menu">
         <button
           id="settings-toggle"
@@ -38,17 +39,21 @@
         <div class="date-control date-picker">
           <span class="date-control-label">Date</span>
           <input id="task-date" type="hidden" />
-          <button
-            id="date-picker-toggle"
-            class="date-picker-toggle"
-            type="button"
-            aria-haspopup="dialog"
-            aria-controls="date-picker-popover"
-            aria-expanded="false"
-          >
-            <span id="selected-date-label"></span>
-            <span aria-hidden="true">▾</span>
-          </button>
+          <div class="date-navigation">
+            <button id="date-previous" type="button" aria-label="Previous day">←</button>
+            <button
+              id="date-picker-toggle"
+              class="date-picker-toggle"
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="date-picker-popover"
+              aria-expanded="false"
+            >
+              <span id="selected-date-label"></span>
+              <span aria-hidden="true">▾</span>
+            </button>
+            <button id="date-next" type="button" aria-label="Next day">→</button>
+          </div>
           <div
             id="date-picker-popover"
             class="date-picker-popover"

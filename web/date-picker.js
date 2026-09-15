@@ -43,14 +43,19 @@ export function initializeDatePicker ({
         label.textContent = selectedDateFormatter.format(selectedDate);
     }
 
-    function selectDate (date) {
+    function setDate (date) {
         selectedDate = date;
         visibleMonth = new Date(date.getFullYear(), date.getMonth(), 1);
         input.value = localDateString(date);
         updateLabel();
         render();
-        close();
         input.dispatchEvent(new Event("change", { bubbles: true }));
+        close();
+    }
+
+    function selectDate (date) {
+        setDate(date);
+        close();
         toggle.focus();
     }
 
@@ -127,4 +132,6 @@ export function initializeDatePicker ({
 
     updateLabel();
     render();
+
+    return { setDate };
 }

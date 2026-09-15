@@ -77,6 +77,7 @@ Real `server.cfg` files are ignored by Git because they contain secrets.
 | --- | --- |
 | `APP_ENV` | `development`, `production`, or `test` |
 | `LISTEN_ADDR` | HTTP listen address, such as `:8081` |
+| `APP_TITLE` | Application title shown in browser titles and frontend branding |
 | `DATABASE_PATH` | SQLite database file |
 | `WEB_ROOT` | Directory containing the frontend files |
 | `APP_BASE_URL` | Public absolute URL used in verification and reset links |

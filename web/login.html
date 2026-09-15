@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Log in | Habit Loop</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./site-config.js"></script>
     <script id="turnstile-script" src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
     <script type="module" src="./users.js"></script>
   </head>
   <body>
     <main class="auth-page">
       <form id="login-form" class="auth-card">
-        <p class="eyebrow">Habit Loop</p>
+        <p class="eyebrow" data-site-title>Habit Loop</p>
         <h1>Welcome back</h1>
         <p class="auth-intro">Log in to manage your habits and todos.</p>
 
@@ -26,6 +27,11 @@
         <button type="submit" id="login-button">Log in</button>
         <button type="button" id="open-registration-button" class="auth-secondary">Create an account</button>
         <a class="page-link" href="./forgot-password.html">Forgot your password?</a>
+        <p class="legal-links">
+          <a href="./privacy.html">Privacy Policy</a>
+          <span aria-hidden="true">&middot;</span>
+          <a href="./terms.html">Terms of Use</a>
+        </p>
       </form>
 
       <div id="registration-popup" class="todo-popup-overlay" hidden>

@@ -75,6 +75,8 @@ const taskDateInput = document.querySelector("#task-date");
 const settingsToggle = document.querySelector("#settings-toggle");
 const settingsDropdown = document.querySelector("#settings-dropdown");
 const adminLink = document.querySelector("#admin-link");
+const previousDateButton = document.querySelector("#date-previous");
+const nextDateButton = document.querySelector("#date-next");
 
 function closeSettingsMenu () {
     settingsDropdown.hidden = true;
@@ -131,7 +133,7 @@ document.addEventListener("keydown", (event) => {
 
 taskDateInput.value = localDateString();
 updateSelectedDayHeading(taskDateInput.value);
-initializeDatePicker({
+const datePicker = initializeDatePicker({
     input: taskDateInput,
     toggle: document.querySelector("#date-picker-toggle"),
     label: document.querySelector("#selected-date-label"),
@@ -142,6 +144,16 @@ initializeDatePicker({
     nextButton: document.querySelector("#date-picker-next"),
     todayButton: document.querySelector("#date-picker-today")
 });
+
+function moveSelectedDate(days) {
+    const selectedDate = new Date(`${taskDateInput.value}T00:00:00`);
+    selectedDate.setDate(selectedDate.getDate() + days);
+    datePicker.setDate(selectedDate);
+}
+
+previousDateButton.addEventListener("click", () => moveSelectedDate(-1));
+nextDateButton.addEventListener("click", () => moveSelectedDate(1));
+
 fetchTodos(taskDateInput.value);
 fetchHabits(taskDateInput.value).catch((error) => {
     console.error("Failed to fetch habits:", error);

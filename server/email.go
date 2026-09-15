@@ -21,6 +21,7 @@ type resendSender struct {
 	apiKey string
 	from   string
 	client *http.Client
+	appTitle string
 }
 
 func newResendSender(cfg Config) EmailSender {
@@ -34,6 +35,7 @@ func newResendSender(cfg Config) EmailSender {
 		apiKey: cfg.ResendAPIKey,
 		from:   cfg.ResendFromEmail,
 		client: &http.Client{Transport: transport, Timeout: 15 * time.Second},
+		appTitle: cfg.AppTitle,
 	}
 }
 
@@ -41,7 +43,7 @@ func (sender *resendSender) SendVerification(ctx context.Context, targetEmail, u
 	return sender.send(
 		ctx,
 		targetEmail,
-		"Verify your Habit Loop account",
+		fmt.Sprintf("Verify your %s account", sender.appTitle),
 		fmt.Sprintf(
 			"<p>Hello %s,</p><p><a href=\"%s\">Continue verifying your account</a>.</p><p>This link expires in 24 hours.</p>",
 			html.EscapeString(userName),
@@ -54,7 +56,7 @@ func (sender *resendSender) SendPasswordReset(ctx context.Context, targetEmail, 
 	return sender.send(
 		ctx,
 		targetEmail,
-		"Reset your Habit Loop password",
+		fmt.Sprintf("Reset your %s password", sender.appTitle),
 		fmt.Sprintf(
 			"<p>Hello %s,</p><p><a href=\"%s\">Reset your password</a>.</p><p>This link expires in one hour.</p>",
 			html.EscapeString(userName),
@@ -67,7 +69,7 @@ func (sender *resendSender) SendActivation(ctx context.Context, targetEmail, use
 	return sender.send(
 		ctx,
 		targetEmail,
-		"Activate your Habit Loop account",
+		fmt.Sprintf("Activate your %s account", sender.appTitle),
 		fmt.Sprintf(
 			"<p>Hello %s,</p><p>An administrator created a Habit Loop account for you.</p><p><a href=\"%s\">Activate your account</a>.</p>",
 			html.EscapeString(userName),

@@ -227,6 +227,51 @@ func TestFinalAdminCannotBeDeletedOrDemoted(t *testing.T) {
 	}
 }
 
+func TestDeleteAccountRequiresConfirmationAndRemovesUserData(t *testing.T) {
+	setupTestApplication(t)
+	userID := insertTestUser(t, "alice", "alice@example.com", "user")
+	if _, err := database.Exec("INSERT INTO todos (user_id, name, date) VALUES (?, 'todo', '2026-09-09')", userID); err != nil {
+		t.Fatal(err)
+	}
+	user, err := getUserByID(context.Background(), database, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodDelete, "/api/delete-account", strings.NewReader(
+		`{"password":"password123","confirmation":"delete"}`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+	request = request.WithContext(context.WithValue(request.Context(), userContextKey, user))
+	response := httptest.NewRecorder()
+	HandleDeleteAccount(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("confirmation status = %d body=%s", response.Code, response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodDelete, "/api/delete-account", strings.NewReader(
+		`{"password":"password123","confirmation":"DELETE"}`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+	request = request.WithContext(context.WithValue(request.Context(), userContextKey, user))
+	response = httptest.NewRecorder()
+	HandleDeleteAccount(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d body=%s", response.Code, response.Body.String())
+	}
+
+	var users, todos int
+	if err := database.QueryRow("SELECT COUNT(*) FROM users WHERE id = ?", userID).Scan(&users); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow("SELECT COUNT(*) FROM todos WHERE user_id = ?", userID).Scan(&todos); err != nil {
+		t.Fatal(err)
+	}
+	if users != 0 || todos != 0 {
+		t.Fatalf("deleted account data remains: users=%d todos=%d", users, todos)
+	}
+}
+
 func TestPasswordChangeInvalidatesSessions(t *testing.T) {
 	setupTestApplication(t)
 	userID := insertTestUser(t, "alice", "alice@example.com", "user")

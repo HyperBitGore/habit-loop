@@ -21,6 +21,7 @@ func TestLoadConfig(t *testing.T) {
 	path := writeConfigFile(t, `
 APP_ENV=development
 LISTEN_ADDR=:9090
+APP_TITLE=My Habits
 DATABASE_PATH=data/storage.db
 WEB_ROOT=public
 APP_BASE_URL=http://localhost:9090
@@ -49,6 +50,9 @@ BOOTSTRAP_ADMIN_PASSWORD="a long bootstrap password"
 	}
 	if cfg.ListenAddr != ":9090" {
 		t.Errorf("ListenAddr = %q", cfg.ListenAddr)
+	}
+	if cfg.AppTitle != "My Habits" {
+		t.Errorf("AppTitle = %q", cfg.AppTitle)
 	}
 	if cfg.TurnstileSecret != "secret with spaces" {
 		t.Errorf("TurnstileSecret = %q", cfg.TurnstileSecret)

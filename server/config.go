@@ -14,6 +14,7 @@ import (
 type Config struct {
 	Environment            string
 	ListenAddr             string
+	AppTitle               string
 	DatabasePath           string
 	WebRoot                string
 	AppBaseURL             *url.URL
@@ -32,6 +33,7 @@ type Config struct {
 var allowedConfigKeys = map[string]struct{}{
 	"APP_ENV":                  {},
 	"LISTEN_ADDR":              {},
+	"APP_TITLE":                {},
 	"DATABASE_PATH":            {},
 	"WEB_ROOT":                 {},
 	"APP_BASE_URL":             {},
@@ -61,6 +63,7 @@ func LoadConfig(path string) (Config, error) {
 	cfg := Config{
 		Environment:            environment,
 		ListenAddr:             strings.TrimSpace(configValue(values, "LISTEN_ADDR", ":8081")),
+		AppTitle:               strings.TrimSpace(configValue(values, "APP_TITLE", "Habit Loop")),
 		DatabasePath:           strings.TrimSpace(configValue(values, "DATABASE_PATH", "storage.db")),
 		WebRoot:                strings.TrimSpace(configValue(values, "WEB_ROOT", "../web")),
 		ResendAPIKey:           strings.TrimSpace(configValue(values, "RESEND_API_KEY", "")),

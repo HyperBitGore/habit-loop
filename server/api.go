@@ -13,9 +13,13 @@ import (
 	"time"
 )
 
-// TODO
-//	- use termly for legal agreements on website
+// Eventually
+//	- database backup script
+//	- gpc
 //	- adsense
+//	- Goals
+//	- Multiple day todos
+//	- Trackable metrics
 
 var (
 	appConfig   Config
@@ -164,6 +168,14 @@ func buildHandler(cfg Config) http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("/api/app-config", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, map[string]string{"title": cfg.AppTitle})
+	})
 
 	mux.Handle("/api/login", rateLimitMiddleware(loginLimiter, nil, http.HandlerFunc(HandleLogin)))
 	mux.Handle("/api/create_account", rateLimitMiddleware(registrationLimiter, nil, http.HandlerFunc(HandleCreateAccount)))
@@ -176,6 +188,7 @@ func buildHandler(cfg Config) http.Handler {
 	mux.Handle("/api/add_task", authMiddleware(http.HandlerFunc(HandleAddTask)))
 	mux.Handle("/api/remove_task", authMiddleware(http.HandlerFunc(HandleRemoveTask)))
 	mux.Handle("/api/update_task", authMiddleware(http.HandlerFunc(HandleUpdateTask)))
+	mux.Handle("/api/delete-account", authMiddleware(http.HandlerFunc(HandleDeleteAccount)))
 	mux.Handle("/api/set_password", authMiddleware(http.HandlerFunc(HandleSetPassword)))
 	mux.Handle("/api/current_user", authMiddleware(http.HandlerFunc(HandleCurrentUser)))
 	mux.Handle("/api/profile", authMiddleware(http.HandlerFunc(HandleUpdateProfile)))

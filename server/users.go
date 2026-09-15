@@ -184,6 +184,32 @@ func DeleteUser(ctx context.Context, db *sql.DB, actorID int, targetID int) erro
 	return tx.Commit()
 }
 
+func DeleteAccount(ctx context.Context, db *sql.DB, user *User, password string) error {
+	if bcrypt.CompareHashAndPassword(user.Password, []byte(password)) != nil {
+		return fmt.Errorf("current password is incorrect")
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if user.Role == "admin" {
+		var adminCount int
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE role = 'admin'").Scan(&adminCount); err != nil {
+			return err
+		}
+		if adminCount <= 1 {
+			return fmt.Errorf("the final administrator cannot be deleted")
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM users WHERE id = ?", user.ID); err != nil {
+		return fmt.Errorf("delete account: %w", err)
+	}
+	return tx.Commit()
+}
+
 func EditUser(ctx context.Context, db *sql.DB, actorID int, targetID int, name string, role string) error {
 	name = strings.TrimSpace(name)
 	if err := validateUsername(name); err != nil {
@@ -323,6 +349,35 @@ func HandleLogout(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, http.StatusInternalServerError, "Unable to log out")
 			return
 		}
+	}
+	http.SetCookie(w, sessionCookie("", -1))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func HandleDeleteAccount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	user := requestUser(w, r)
+	if user == nil {
+		return
+	}
+	var request struct {
+		Password     string `json:"password"`
+		Confirmation string `json:"confirmation"`
+	}
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if request.Confirmation != "DELETE" {
+		writeAPIError(w, http.StatusBadRequest, `type "DELETE" to confirm account deletion`)
+		return
+	}
+	if err := DeleteAccount(r.Context(), database, user, request.Password); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	http.SetCookie(w, sessionCookie("", -1))
 	w.WriteHeader(http.StatusNoContent)

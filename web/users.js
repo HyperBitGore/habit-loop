@@ -281,6 +281,19 @@ export async function deleteUser (id) {
     }
 }
 
+export async function deleteAccount (password, confirmation) {
+    const response = await fetch("/api/delete-account", {
+        method: "DELETE",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ password, confirmation })
+    });
+    if (!response.ok) {
+        throw new Error(await responseError(response, "Unable to delete account."));
+    }
+}
+
 export async function setPassword (currentPassword, newPassword) {
     const response = await fetch("/api/set_password", {
         method: "PUT",

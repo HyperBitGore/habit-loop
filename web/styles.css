@@ -119,6 +119,58 @@ h2 {
   text-decoration: none;
 }
 
+.legal-page {
+  width: min(100%, 48rem);
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+}
+
+.legal-back-link {
+  display: inline-block;
+  margin-bottom: 4rem;
+}
+
+.legal-page h1 {
+  margin-bottom: 0.75rem;
+}
+
+.legal-page h2 {
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.legal-page p,
+.legal-page li {
+  color: var(--ink-soft);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.legal-page ul {
+  padding-left: 1.4rem;
+}
+
+.legal-page strong {
+  color: var(--ink);
+}
+
+.legal-effective {
+  margin-bottom: 2.5rem;
+  color: var(--ink-soft);
+  font-size: 0.9rem !important;
+}
+
+.legal-links {
+  margin: 0.25rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.legal-links a {
+  color: var(--ink-soft);
+}
+
 .settings-menu {
   position: relative;
 }
@@ -207,6 +259,21 @@ h2 {
   justify-content: space-between;
   gap: 1rem;
   text-transform: none;
+}
+
+.date-navigation {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
+  gap: 0.35rem;
+}
+
+.date-navigation > button {
+  min-height: 2.65rem;
+  padding: 0;
+}
+
+.date-navigation .date-picker-toggle {
+  min-width: 0;
 }
 
 .date-picker-popover {
@@ -688,6 +755,26 @@ select {
 
 .auth-error.is-success {
   color: var(--success);
+}
+
+.danger-zone {
+  margin-top: 1rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.danger-zone h2 {
+  color: var(--danger);
+}
+
+.danger-button {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+.danger-button:hover {
+  border-color: #842c25;
+  background: #842c25;
 }
 
 .turnstile-widget {

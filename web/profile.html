@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>User settings | Habit Loop</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./site-config.js"></script>
     <script type="module" src="./profile.js"></script>
   </head>
   <body>
     <main class="auth-page">
       <section class="auth-card profile-card">
-        <p class="eyebrow">Habit Loop</p>
+        <p class="eyebrow" data-site-title>Habit Loop</p>
         <h1>User settings</h1>
 
         <form id="profile-form">
@@ -36,6 +37,22 @@
           <p id="password-message" class="auth-error" role="status" hidden></p>
           <button type="submit">Update password</button>
         </form>
+
+        <section class="danger-zone" aria-labelledby="delete-account-heading">
+          <h2 id="delete-account-heading">Delete account</h2>
+          <p class="auth-intro">
+            This permanently deletes your account, habits, todos, and history.
+            This action cannot be undone.
+          </p>
+          <form id="delete-account-form">
+            <label for="delete-account-password">Current password</label>
+            <input id="delete-account-password" name="password" type="password" autocomplete="current-password" required />
+            <label for="delete-account-confirmation">Type DELETE to confirm</label>
+            <input id="delete-account-confirmation" name="confirmation" type="text" autocomplete="off" required />
+            <p id="delete-account-message" class="auth-error" role="alert" hidden></p>
+            <button type="submit" class="danger-button">Delete my account</button>
+          </form>
+        </section>
 
         <button id="logout" class="auth-secondary" type="button">Log out</button>
         <a class="page-link" href="./todo.html">Back to habits and todos</a>

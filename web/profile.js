@@ -1,4 +1,4 @@
-import { getCurrentUser, logout, setPassword, updateProfile } from "./users.js";
+import { deleteAccount, getCurrentUser, logout, setPassword, updateProfile } from "./users.js";
 
 const profileForm = document.querySelector("#profile-form");
 const profileName = document.querySelector("#profile-name");
@@ -7,6 +7,8 @@ const pendingEmail = document.querySelector("#pending-email");
 const profileMessage = document.querySelector("#profile-message");
 const passwordForm = document.querySelector("#password-form");
 const passwordMessage = document.querySelector("#password-message");
+const deleteAccountForm = document.querySelector("#delete-account-form");
+const deleteAccountMessage = document.querySelector("#delete-account-message");
 
 function showMessage(element, message, success = false) {
     element.textContent = message;
@@ -61,6 +63,21 @@ passwordForm.addEventListener("submit", async (event) => {
         window.location.assign("./login.html");
     } catch (error) {
         showMessage(passwordMessage, error.message);
+    }
+});
+
+deleteAccountForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    deleteAccountMessage.hidden = true;
+    const formData = new FormData(deleteAccountForm);
+    if (!window.confirm("This permanently deletes your account and all of its data. Continue?")) {
+        return;
+    }
+    try {
+        await deleteAccount(formData.get("password"), formData.get("confirmation"));
+        window.location.assign("./login.html");
+    } catch (error) {
+        showMessage(deleteAccountMessage, error.message);
     }
 });
 
