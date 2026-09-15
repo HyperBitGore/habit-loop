@@ -81,82 +81,11 @@ func requestUser(w http.ResponseWriter, r *http.Request) *User {
 	return nil
 }
 
-func scanUser(row *sql.Row) (*User, error) {
-	var user User
-	err := row.Scan(
-		&user.ID,
-		&user.Name,
-		&user.Email,
-		&user.PendingEmail,
-		&user.Password,
-		&user.Role,
-		&user.EmailVerified,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &user, nil
-}
-
-func getUserByName(ctx context.Context, db *sql.DB, name string) (*User, error) {
-	return scanUser(db.QueryRowContext(ctx, `
-		SELECT id, name, COALESCE(email, ''), COALESCE(pending_email, ''),
-		       password_hash, role, email_verified
-		FROM users
-		WHERE name = ?
-	`, strings.TrimSpace(name)))
-}
-
-func getUserByID(ctx context.Context, db *sql.DB, id int) (*User, error) {
-	return scanUser(db.QueryRowContext(ctx, `
-		SELECT id, name, COALESCE(email, ''), COALESCE(pending_email, ''),
-		       password_hash, role, email_verified
-		FROM users
-		WHERE id = ?
-	`, id))
-}
-
-func adminExists(ctx context.Context, db *sql.DB) (bool, error) {
-	var exists bool
-	err := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE role = 'admin')").Scan(&exists)
-	return exists, err
-}
-
-func bootstrapAdmin(ctx context.Context, db *sql.DB, cfg Config) error {
-	exists, err := adminExists(ctx, db)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-	if cfg.BootstrapAdminName == "" {
-		return fmt.Errorf("no administrator exists; set BOOTSTRAP_ADMIN_NAME, BOOTSTRAP_ADMIN_EMAIL, and BOOTSTRAP_ADMIN_PASSWORD")
-	}
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(cfg.BootstrapAdminPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO users (
-			name, email, email_normalized, password_hash, role, email_verified
-		)
-		VALUES (?, ?, ?, ?, 'admin', TRUE)
-	`, cfg.BootstrapAdminName, cfg.BootstrapAdminEmail, normalizeEmail(cfg.BootstrapAdminEmail), string(passwordHash))
-	if err != nil {
-		return fmt.Errorf("create bootstrap administrator: %w", err)
-	}
-	return nil
-}
-
-func DeleteUser(ctx context.Context, db *sql.DB, actorID int, targetID int) error {
+func (s *Store) DeleteUser(ctx context.Context, actorID int, targetID int) error {
 	if actorID == targetID {
 		return fmt.Errorf("you cannot delete your own account from user administration")
 	}
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -184,12 +113,12 @@ func DeleteUser(ctx context.Context, db *sql.DB, actorID int, targetID int) erro
 	return tx.Commit()
 }
 
-func DeleteAccount(ctx context.Context, db *sql.DB, user *User, password string) error {
+func (s *Store) DeleteAccount(ctx context.Context, user *User, password string) error {
 	if bcrypt.CompareHashAndPassword(user.Password, []byte(password)) != nil {
 		return fmt.Errorf("current password is incorrect")
 	}
 
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -210,7 +139,7 @@ func DeleteAccount(ctx context.Context, db *sql.DB, user *User, password string)
 	return tx.Commit()
 }
 
-func EditUser(ctx context.Context, db *sql.DB, actorID int, targetID int, name string, role string) error {
+func (s *Store) EditUser(ctx context.Context, actorID int, targetID int, name string, role string) error {
 	name = strings.TrimSpace(name)
 	if err := validateUsername(name); err != nil {
 		return err
@@ -222,7 +151,7 @@ func EditUser(ctx context.Context, db *sql.DB, actorID int, targetID int, name s
 		return fmt.Errorf("you cannot demote your own administrator account")
 	}
 
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -250,7 +179,7 @@ func EditUser(ctx context.Context, db *sql.DB, actorID int, targetID int, name s
 	return tx.Commit()
 }
 
-func SetUserPassword(ctx context.Context, db *sql.DB, user *User, currentPassword string, newPassword string) error {
+func (s *Store) SetUserPassword(ctx context.Context, user *User, currentPassword string, newPassword string) error {
 	if err := validatePassword(newPassword); err != nil {
 		return err
 	}
@@ -261,7 +190,7 @@ func SetUserPassword(ctx context.Context, db *sql.DB, user *User, currentPasswor
 	if err != nil {
 		return err
 	}
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -297,7 +226,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := getUserByName(r.Context(), database, credentials.Name)
+	user, err := appStore.GetUserByName(r.Context(), credentials.Name)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "Unable to log in")
 		return
@@ -311,7 +240,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusUnauthorized, "Invalid login credentials")
 		return
 	}
-	token, err := CreateSessionToken(r.Context(), database, user.ID)
+	token, err := appStore.CreateSessionToken(r.Context(), user.ID)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "Unable to log in")
 		return
@@ -345,7 +274,7 @@ func HandleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	cookie, err := r.Cookie("auth")
 	if err == nil && cookie.Value != "" {
-		if err := DeleteSessionToken(r.Context(), database, cookie.Value); err != nil {
+		if err := appStore.DeleteSessionToken(r.Context(), cookie.Value); err != nil {
 			writeAPIError(w, http.StatusInternalServerError, "Unable to log out")
 			return
 		}
@@ -375,7 +304,7 @@ func HandleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, `type "DELETE" to confirm account deletion`)
 		return
 	}
-	if err := DeleteAccount(r.Context(), database, user, request.Password); err != nil {
+	if err := appStore.DeleteAccount(r.Context(), user, request.Password); err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -406,14 +335,14 @@ func HandleRegisterUser(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "Invalid role")
 		return
 	}
-	userID, token, err := createUnverifiedUser(r.Context(), database, account.Name, account.Email, account.Password, account.Role, "activation")
+	userID, token, err := appStore.CreateUnverifiedUser(r.Context(), account.Name, account.Email, account.Password, account.Role, "activation")
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, publicAccountError(err))
 		return
 	}
 	verificationURL := verificationPageURL(token)
 	if err := emailSender.SendActivation(r.Context(), normalizeEmail(account.Email), strings.TrimSpace(account.Name), verificationURL); err != nil {
-		if _, cleanupErr := database.ExecContext(r.Context(), "DELETE FROM users WHERE id = ?", userID); cleanupErr != nil {
+		if cleanupErr := appStore.DeleteUserByID(r.Context(), int(userID)); cleanupErr != nil {
 			logRequestError(r, "cleanup failed admin-created user", cleanupErr)
 		}
 		writeAPIError(w, http.StatusBadGateway, "Activation email could not be sent")
@@ -438,7 +367,7 @@ func HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := DeleteUser(r.Context(), database, actor.ID, request.ID); err != nil {
+	if err := appStore.DeleteUser(r.Context(), actor.ID, request.ID); err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -463,7 +392,7 @@ func HandleEditUser(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := EditUser(r.Context(), database, actor.ID, request.ID, request.Name, request.Role); err != nil {
+	if err := appStore.EditUser(r.Context(), actor.ID, request.ID, request.Name, request.Role); err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -475,28 +404,12 @@ func HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	type userSummary struct {
-		ID            int    `json:"id"`
-		Name          string `json:"name"`
-		Email         string `json:"email"`
-		Role          string `json:"role"`
-		EmailVerified bool   `json:"email_verified"`
-	}
-	type userCursor struct {
-		Name string `json:"name"`
-		ID   int    `json:"id"`
-	}
-	type userPage struct {
-		Users      []userSummary `json:"users"`
-		NextCursor string        `json:"next_cursor,omitempty"`
-	}
-
 	search := strings.TrimSpace(r.URL.Query().Get("search"))
 	if len(search) > 100 {
 		writeAPIError(w, http.StatusBadRequest, "Search is too long")
 		return
 	}
-	cursor := userCursor{}
+	cursor := UserCursor{}
 	if encodedCursor := r.URL.Query().Get("cursor"); encodedCursor != "" {
 		decoded, err := base64.RawURLEncoding.DecodeString(encodedCursor)
 		if err != nil || json.Unmarshal(decoded, &cursor) != nil || cursor.ID < 1 {
@@ -506,53 +419,10 @@ func HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	const pageSize = 100
-	rows, err := database.QueryContext(r.Context(), `
-		SELECT id, name, COALESCE(email, ''), role, email_verified
-		FROM users
-		WHERE (
-			? = ''
-			OR instr(lower(name), lower(?)) > 0
-			OR instr(lower(COALESCE(email, '')), lower(?)) > 0
-		)
-		  AND (
-			? = ''
-			OR lower(name) > ?
-			OR (lower(name) = ? AND id > ?)
-		  )
-		ORDER BY lower(name), id
-		LIMIT ?
-	`, search, search, search, cursor.Name, cursor.Name, cursor.Name, cursor.ID, pageSize+1)
+	page, err := appStore.ListUsers(r.Context(), search, cursor, pageSize)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "Unable to load users")
 		return
-	}
-	defer rows.Close()
-	users := make([]userSummary, 0, pageSize+1)
-	for rows.Next() {
-		var user userSummary
-		if err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.EmailVerified); err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "Unable to load users")
-			return
-		}
-		users = append(users, user)
-	}
-	if err := rows.Err(); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to load users")
-		return
-	}
-	page := userPage{Users: users}
-	if len(page.Users) > pageSize {
-		lastUser := page.Users[pageSize-1]
-		encodedCursor, err := json.Marshal(userCursor{
-			Name: strings.ToLower(lastUser.Name),
-			ID:   lastUser.ID,
-		})
-		if err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "Unable to load users")
-			return
-		}
-		page.NextCursor = base64.RawURLEncoding.EncodeToString(encodedCursor)
-		page.Users = page.Users[:pageSize]
 	}
 	writeJSON(w, http.StatusOK, page)
 }
@@ -574,7 +444,7 @@ func HandleSetPassword(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := SetUserPassword(r.Context(), database, user, passwords.CurrentPassword, passwords.NewPassword); err != nil {
+	if err := appStore.SetUserPassword(r.Context(), user, passwords.CurrentPassword, passwords.NewPassword); err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -603,19 +473,13 @@ func HandleRequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusTooManyRequests, "Too many requests")
 		return
 	}
-	var userID int
-	var userName, email string
-	err := database.QueryRowContext(r.Context(), `
-		SELECT id, name, email
-		FROM users
-		WHERE email_normalized = ? AND email_verified = TRUE
-	`, normalizedEmail).Scan(&userID, &userName, &email)
-	if err == sql.ErrNoRows {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
+	userID, userName, email, found, err := appStore.FindVerifiedUserByEmail(r.Context(), normalizedEmail)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "Unable to request password reset")
+		return
+	}
+	if !found {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	token, tokenHash, err := newToken()
@@ -623,30 +487,13 @@ func HandleRequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "Unable to request password reset")
 		return
 	}
-	tx, err := database.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to request password reset")
-		return
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(r.Context(), "DELETE FROM password_resets WHERE user_id = ?", userID); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to request password reset")
-		return
-	}
-	if _, err := tx.ExecContext(r.Context(), `
-		INSERT INTO password_resets (token_hash, user_id, expires_at)
-		VALUES (?, ?, ?)
-	`, tokenHash, userID, timestamp(time.Now().Add(time.Hour))); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to request password reset")
-		return
-	}
-	if err := tx.Commit(); err != nil {
+	if err := appStore.CreatePasswordReset(r.Context(), userID, tokenHash); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "Unable to request password reset")
 		return
 	}
 	resetURL := appConfig.AppBaseURL.String() + "/reset-password.html?token=" + url.QueryEscape(token)
 	if err := emailSender.SendPasswordReset(r.Context(), email, userName, resetURL); err != nil {
-		if _, cleanupErr := database.ExecContext(r.Context(), "DELETE FROM password_resets WHERE token_hash = ?", tokenHash); cleanupErr != nil {
+		if cleanupErr := appStore.DeletePasswordReset(r.Context(), tokenHash); cleanupErr != nil {
 			logRequestError(r, "cleanup password reset token", cleanupErr)
 		}
 		writeAPIError(w, http.StatusBadGateway, "Password reset email could not be sent")
@@ -677,43 +524,16 @@ func HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tokenHash := sha256.Sum256([]byte(request.Token))
-	tx, err := database.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to reset password")
-		return
-	}
-	defer tx.Rollback()
-	var userID int
-	err = tx.QueryRowContext(r.Context(), `
-		SELECT user_id FROM password_resets
-		WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP
-	`, tokenHash[:]).Scan(&userID)
-	if err == sql.ErrNoRows {
-		writeAPIError(w, http.StatusBadRequest, "Invalid or expired password reset link")
-		return
-	}
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to reset password")
-		return
-	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(request.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "Unable to reset password")
 		return
 	}
-	if _, err := tx.ExecContext(r.Context(), "UPDATE users SET password_hash = ? WHERE id = ?", string(passwordHash), userID); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to reset password")
-		return
-	}
-	if _, err := tx.ExecContext(r.Context(), "DELETE FROM password_resets WHERE user_id = ?", userID); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to reset password")
-		return
-	}
-	if _, err := tx.ExecContext(r.Context(), "DELETE FROM sessions WHERE user_id = ?", userID); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to reset password")
-		return
-	}
-	if err := tx.Commit(); err != nil {
+	if err := appStore.ResetPassword(r.Context(), tokenHash[:], passwordHash); err != nil {
+		if err == errInvalidPasswordReset {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeAPIError(w, http.StatusInternalServerError, "Unable to reset password")
 		return
 	}
@@ -756,7 +576,7 @@ func HandleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	token, changedEmail, err := updateUserProfile(r.Context(), database, user, profile.Name, profile.Email, profile.CurrentPassword)
+	token, changedEmail, err := appStore.UpdateUserProfile(r.Context(), user, profile.Name, profile.Email, profile.CurrentPassword)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
@@ -764,21 +584,7 @@ func HandleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	if changedEmail {
 		verificationURL := verificationPageURL(token)
 		if err := emailSender.SendVerification(r.Context(), normalizeEmail(profile.Email), strings.TrimSpace(profile.Name), verificationURL); err != nil {
-			tx, cleanupErr := database.BeginTx(r.Context(), nil)
-			if cleanupErr == nil {
-				if _, cleanupErr = tx.ExecContext(r.Context(), `
-					UPDATE users SET pending_email = NULL, pending_email_normalized = NULL WHERE id = ?
-				`, user.ID); cleanupErr == nil {
-					_, cleanupErr = tx.ExecContext(r.Context(), `
-						DELETE FROM email_verifications WHERE user_id = ? AND kind = 'email_change'
-					`, user.ID)
-				}
-				if cleanupErr == nil {
-					cleanupErr = tx.Commit()
-				} else {
-					_ = tx.Rollback()
-				}
-			}
+			cleanupErr := appStore.ClearPendingEmail(r.Context(), user.ID)
 			if cleanupErr != nil {
 				logRequestError(r, "cleanup pending email", cleanupErr)
 			}
@@ -789,7 +595,7 @@ func HandleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"email_verification_required": changedEmail})
 }
 
-func updateUserProfile(ctx context.Context, db *sql.DB, user *User, name, email, currentPassword string) (string, bool, error) {
+func (s *Store) UpdateUserProfile(ctx context.Context, user *User, name, email, currentPassword string) (string, bool, error) {
 	name = strings.TrimSpace(name)
 	email = normalizeEmail(email)
 	if err := validateUsername(name); err != nil {
@@ -812,7 +618,7 @@ func updateUserProfile(ctx context.Context, db *sql.DB, user *User, name, email,
 			return "", false, err
 		}
 	}
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", false, err
 	}

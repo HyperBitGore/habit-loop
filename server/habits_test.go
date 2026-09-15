@@ -11,7 +11,7 @@ import (
 
 func habitRequestForUser(t *testing.T, method, target string, userID int) *http.Request {
 	t.Helper()
-	user, err := getUserByID(context.Background(), database, userID)
+	user, err := appStore.GetUserByID(context.Background(), userID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestHabitHandlersPersistAndReturnSchedule(t *testing.T) {
 		t.Fatalf("edit status = %d body=%s", editResponse.Code, editResponse.Body.String())
 	}
 
-	habits, err := getUserHabits(database, userID)
+	habits, err := appStore.ListHabits(context.Background(), userID)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"flag"
 	"log"
@@ -13,18 +12,19 @@ import (
 	"time"
 )
 
-// Eventually
+// TODO
+//	- reorderable habits and todos
+//	- Multiple day todos
+//	- Trackable metrics
 //	- database backup script
 //	- gpc
 //	- adsense
 //	- Goals
-//	- Multiple day todos
-//	- Trackable metrics
 
 var (
-	appConfig   Config
-	emailSender EmailSender
-
+	appConfig            Config
+	emailSender          EmailSender
+	appStore             *Store
 	loginLimiter         = newRateLimiter(10, time.Minute)
 	loginAccountLimiter  = newRateLimiter(10, time.Minute)
 	registrationLimiter  = newRateLimiter(5, time.Hour)
@@ -40,7 +40,7 @@ func authMiddleware(next http.Handler) http.Handler {
 			writeAPIError(w, http.StatusUnauthorized, "Unauthorized")
 			return
 		}
-		user, err := GetUserFromToken(r.Context(), database, cookie.Value)
+		user, err := appStore.GetUserFromToken(r.Context(), cookie.Value)
 		if err != nil {
 			logRequestError(r, "load authenticated user", err)
 			writeAPIError(w, http.StatusInternalServerError, "Unable to authenticate")
@@ -102,10 +102,11 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
-	if err := bootstrapAdmin(context.Background(), db, cfg); err != nil {
+	appStore = NewStore(db)
+	if err := appStore.BootstrapAdmin(context.Background(), cfg); err != nil {
 		log.Fatal(err)
 	}
-	if err := cleanupExpiredRecords(db); err != nil {
+	if err := appStore.CleanupExpiredRecords(context.Background()); err != nil {
 		log.Printf("initial expired-record cleanup failed: %v", err)
 	}
 	emailSender = newResendSender(cfg)
@@ -122,7 +123,7 @@ func main() {
 	}
 
 	stopCleanup := make(chan struct{})
-	go cleanupLoop(db, stopCleanup)
+	go cleanupLoop(appStore, stopCleanup)
 
 	serverErrors := make(chan error, 1)
 	go func() {
@@ -162,7 +163,7 @@ func buildHandler(cfg Config) http.Handler {
 			writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
 			return
 		}
-		if err := database.PingContext(r.Context()); err != nil {
+		if err := appStore.PingContext(r.Context()); err != nil {
 			writeAPIError(w, http.StatusServiceUnavailable, "Not ready")
 			return
 		}
@@ -217,13 +218,13 @@ func buildHandler(cfg Config) http.Handler {
 	return handler
 }
 
-func cleanupLoop(db *sql.DB, stop <-chan struct{}) {
+func cleanupLoop(store *Store, stop <-chan struct{}) {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			if err := cleanupExpiredRecords(db); err != nil {
+			if err := store.CleanupExpiredRecords(context.Background()); err != nil {
 				log.Printf("expired-record cleanup failed: %v", err)
 			}
 		case <-stop:

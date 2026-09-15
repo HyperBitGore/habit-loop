@@ -44,6 +44,7 @@ func setupTestApplication(t *testing.T) *fakeEmailSender {
 	if err != nil {
 		t.Fatal(err)
 	}
+	appStore = NewStore(db)
 	t.Cleanup(func() { db.Close() })
 	appConfig, err = LoadConfigForTest()
 	if err != nil {
@@ -169,12 +170,12 @@ func TestBootstrapAdminRunsOnlyWhenNoAdminExists(t *testing.T) {
 	config.BootstrapAdminName = "owner"
 	config.BootstrapAdminEmail = "owner@example.com"
 	config.BootstrapAdminPassword = "password123"
-	if err := bootstrapAdmin(context.Background(), database, config); err != nil {
+	if err := appStore.BootstrapAdmin(context.Background(), config); err != nil {
 		t.Fatal(err)
 	}
 	config.BootstrapAdminName = "attacker"
 	config.BootstrapAdminEmail = "attacker@example.com"
-	if err := bootstrapAdmin(context.Background(), database, config); err != nil {
+	if err := appStore.BootstrapAdmin(context.Background(), config); err != nil {
 		t.Fatal(err)
 	}
 	var admins int
@@ -201,7 +202,7 @@ func TestDeletingUserCascadesOwnedData(t *testing.T) {
 	if _, err := database.Exec("INSERT INTO completions (habit_id, date) VALUES (?, '2026-09-09')", habitID); err != nil {
 		t.Fatal(err)
 	}
-	if err := DeleteUser(context.Background(), database, adminID, userID); err != nil {
+	if err := appStore.DeleteUser(context.Background(), adminID, userID); err != nil {
 		t.Fatal(err)
 	}
 	for _, table := range []string{"todos", "habits", "completions"} {
@@ -219,10 +220,10 @@ func TestFinalAdminCannotBeDeletedOrDemoted(t *testing.T) {
 	setupTestApplication(t)
 	adminID := insertTestUser(t, "admin", "admin@example.com", "admin")
 	otherID := insertTestUser(t, "alice", "alice@example.com", "user")
-	if err := DeleteUser(context.Background(), database, otherID, adminID); err == nil {
+	if err := appStore.DeleteUser(context.Background(), otherID, adminID); err == nil {
 		t.Fatal("final admin deletion succeeded")
 	}
-	if err := EditUser(context.Background(), database, otherID, adminID, "admin", "user"); err == nil {
+	if err := appStore.EditUser(context.Background(), otherID, adminID, "admin", "user"); err == nil {
 		t.Fatal("final admin demotion succeeded")
 	}
 }
@@ -233,7 +234,7 @@ func TestDeleteAccountRequiresConfirmationAndRemovesUserData(t *testing.T) {
 	if _, err := database.Exec("INSERT INTO todos (user_id, name, date) VALUES (?, 'todo', '2026-09-09')", userID); err != nil {
 		t.Fatal(err)
 	}
-	user, err := getUserByID(context.Background(), database, userID)
+	user, err := appStore.GetUserByID(context.Background(), userID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,14 +276,14 @@ func TestDeleteAccountRequiresConfirmationAndRemovesUserData(t *testing.T) {
 func TestPasswordChangeInvalidatesSessions(t *testing.T) {
 	setupTestApplication(t)
 	userID := insertTestUser(t, "alice", "alice@example.com", "user")
-	user, err := getUserByID(context.Background(), database, userID)
+	user, err := appStore.GetUserByID(context.Background(), userID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateSessionToken(context.Background(), database, userID); err != nil {
+	if _, err := appStore.CreateSessionToken(context.Background(), userID); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetUserPassword(context.Background(), database, user, "password123", "newpassword123"); err != nil {
+	if err := appStore.SetUserPassword(context.Background(), user, "password123", "newpassword123"); err != nil {
 		t.Fatal(err)
 	}
 	var sessions int
@@ -297,14 +298,14 @@ func TestPasswordChangeInvalidatesSessions(t *testing.T) {
 func TestEmailChangeRequiresPasswordAndStaysPending(t *testing.T) {
 	setupTestApplication(t)
 	userID := insertTestUser(t, "alice", "alice@example.com", "user")
-	user, err := getUserByID(context.Background(), database, userID)
+	user, err := appStore.GetUserByID(context.Background(), userID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := updateUserProfile(context.Background(), database, user, "alice", "new@example.com", "wrong"); err == nil {
+	if _, _, err := appStore.UpdateUserProfile(context.Background(), user, "alice", "new@example.com", "wrong"); err == nil {
 		t.Fatal("email change succeeded with wrong password")
 	}
-	token, changed, err := updateUserProfile(context.Background(), database, user, "alice", "new@example.com", "password123")
+	token, changed, err := appStore.UpdateUserProfile(context.Background(), user, "alice", "new@example.com", "password123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +362,7 @@ func TestCrossUserTaskMutationIsRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	taskID, _ := result.LastInsertId()
-	other, err := getUserByID(context.Background(), database, otherID)
+	other, err := appStore.GetUserByID(context.Background(), otherID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +394,7 @@ func TestDuplicateHabitCompletionIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	habitID, _ := result.LastInsertId()
-	user, err := getUserByID(context.Background(), database, userID)
+	user, err := appStore.GetUserByID(context.Background(), userID)
 	if err != nil {
 		t.Fatal(err)
 	}

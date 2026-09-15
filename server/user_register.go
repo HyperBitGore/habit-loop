@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -31,7 +29,7 @@ func HandleCreateAccount(w http.ResponseWriter, r *http.Request) {
 	if !requireTurnstile(w, r, account.TurnstileToken, "signup") {
 		return
 	}
-	userID, token, err := createUnverifiedUser(r.Context(), database, account.Name, account.Email, account.Password, "user", "account")
+	userID, token, err := appStore.CreateUnverifiedUser(r.Context(), account.Name, account.Email, account.Password, "user", "account")
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, publicAccountError(err))
 		return
@@ -42,7 +40,7 @@ func HandleCreateAccount(w http.ResponseWriter, r *http.Request) {
 		strings.TrimSpace(account.Name),
 		verificationPageURL(token),
 	); err != nil {
-		if _, cleanupErr := database.ExecContext(r.Context(), "DELETE FROM users WHERE id = ?", userID); cleanupErr != nil {
+		if cleanupErr := appStore.DeleteUserByID(r.Context(), int(userID)); cleanupErr != nil {
 			logRequestError(r, "cleanup failed registration", cleanupErr)
 		}
 		writeAPIError(w, http.StatusBadGateway, "Verification email could not be sent")
@@ -51,9 +49,8 @@ func HandleCreateAccount(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-func createUnverifiedUser(
+func (s *Store) CreateUnverifiedUser(
 	ctx context.Context,
-	db *sql.DB,
 	name string,
 	email string,
 	password string,
@@ -83,7 +80,7 @@ func createUnverifiedUser(
 		return 0, "", err
 	}
 
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, "", err
 	}
@@ -135,58 +132,12 @@ func HandleVerifyEmail(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	tokenHash := sha256.Sum256([]byte(request.Token))
-	tx, err := database.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to verify email")
-		return
-	}
-	defer tx.Rollback()
-
-	var userID int
-	var email, kind string
-	err = tx.QueryRowContext(r.Context(), `
-		SELECT user_id, email, kind
-		FROM email_verifications
-		WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP
-	`, tokenHash[:]).Scan(&userID, &email, &kind)
-	if err == sql.ErrNoRows {
-		writeAPIError(w, http.StatusBadRequest, "Invalid or expired verification link")
-		return
-	}
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to verify email")
-		return
-	}
-	switch kind {
-	case "account", "activation":
-		if _, err := tx.ExecContext(r.Context(), `
-			UPDATE users SET email = ?, email_normalized = ?, email_verified = TRUE
-			WHERE id = ?
-		`, email, normalizeEmail(email), userID); err != nil {
+	if err := appStore.VerifyEmail(r.Context(), request.Token); err != nil {
+		if err == errInvalidVerificationLink || err.Error() == "email is already registered" {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+		} else {
 			writeAPIError(w, http.StatusInternalServerError, "Unable to verify email")
-			return
 		}
-	case "email_change":
-		if _, err := tx.ExecContext(r.Context(), `
-			UPDATE users
-			SET email = ?, email_normalized = ?, email_verified = TRUE,
-			    pending_email = NULL, pending_email_normalized = NULL
-			WHERE id = ?
-		`, email, normalizeEmail(email), userID); err != nil {
-			writeAPIError(w, http.StatusBadRequest, "Email is already registered")
-			return
-		}
-	default:
-		writeAPIError(w, http.StatusBadRequest, "Invalid verification link")
-		return
-	}
-	if _, err := tx.ExecContext(r.Context(), "DELETE FROM email_verifications WHERE user_id = ?", userID); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to verify email")
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Unable to verify email")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

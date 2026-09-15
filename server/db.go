@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -40,19 +39,4 @@ func InitDB(path string) (*sql.DB, error) {
 	}
 	database = db
 	return db, nil
-}
-
-func cleanupExpiredRecords(db *sql.DB) error {
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for _, table := range []string{"sessions", "email_verifications", "password_resets"} {
-		if _, err := tx.Exec("DELETE FROM "+table+" WHERE expires_at <= ?", now); err != nil {
-			return fmt.Errorf("clean expired %s: %w", table, err)
-		}
-	}
-	return tx.Commit()
 }

@@ -14,9 +14,9 @@ func hashSessionToken(token string) []byte {
 	return hash[:]
 }
 
-func userIDFromToken(ctx context.Context, db *sql.DB, token string) (int, bool, error) {
+func (s *Store) userIDFromToken(ctx context.Context, token string) (int, bool, error) {
 	var userID int
-	err := db.QueryRowContext(ctx, `
+	err := s.db.QueryRowContext(ctx, `
 		SELECT user_id
 		FROM sessions
 		WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP
@@ -30,13 +30,13 @@ func userIDFromToken(ctx context.Context, db *sql.DB, token string) (int, bool, 
 	return userID, true, nil
 }
 
-func CreateSessionToken(ctx context.Context, db *sql.DB, userID int) (string, error) {
+func (s *Store) CreateSessionToken(ctx context.Context, userID int) (string, error) {
 	rawToken := make([]byte, 32)
 	if _, err := rand.Read(rawToken); err != nil {
 		return "", err
 	}
 	token := base64.RawURLEncoding.EncodeToString(rawToken)
-	_, err := db.ExecContext(ctx, `
+	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO sessions (token_hash, user_id, expires_at)
 		VALUES (?, ?, ?)
 	`, hashSessionToken(token), userID, timestamp(time.Now().Add(sessionTimeMinutes*time.Minute)))
@@ -46,15 +46,15 @@ func CreateSessionToken(ctx context.Context, db *sql.DB, userID int) (string, er
 	return token, nil
 }
 
-func GetUserFromToken(ctx context.Context, db *sql.DB, token string) (*User, error) {
-	id, ok, err := userIDFromToken(ctx, db, token)
+func (s *Store) GetUserFromToken(ctx context.Context, token string) (*User, error) {
+	id, ok, err := s.userIDFromToken(ctx, token)
 	if err != nil || !ok {
 		return nil, err
 	}
-	return getUserByID(ctx, db, id)
+	return s.GetUserByID(ctx, id)
 }
 
-func DeleteSessionToken(ctx context.Context, db *sql.DB, token string) error {
-	_, err := db.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", hashSessionToken(token))
+func (s *Store) DeleteSessionToken(ctx context.Context, token string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", hashSessionToken(token))
 	return err
 }
