@@ -15,6 +15,7 @@ type Config struct {
 	Environment            string
 	ListenAddr             string
 	AppTitle               string
+	ContactEmail           string
 	DatabasePath           string
 	WebRoot                string
 	AppBaseURL             *url.URL
@@ -34,6 +35,7 @@ var allowedConfigKeys = map[string]struct{}{
 	"APP_ENV":                  {},
 	"LISTEN_ADDR":              {},
 	"APP_TITLE":                {},
+	"CONTACT_EMAIL":            {},
 	"DATABASE_PATH":            {},
 	"WEB_ROOT":                 {},
 	"APP_BASE_URL":             {},
@@ -64,6 +66,7 @@ func LoadConfig(path string) (Config, error) {
 		Environment:            environment,
 		ListenAddr:             strings.TrimSpace(configValue(values, "LISTEN_ADDR", ":8081")),
 		AppTitle:               strings.TrimSpace(configValue(values, "APP_TITLE", "Habit Loop")),
+		ContactEmail:           normalizeEmail(configValue(values, "CONTACT_EMAIL", "privacy@todosloop.com")),
 		DatabasePath:           strings.TrimSpace(configValue(values, "DATABASE_PATH", "storage.db")),
 		WebRoot:                strings.TrimSpace(configValue(values, "WEB_ROOT", "../web")),
 		ResendAPIKey:           strings.TrimSpace(configValue(values, "RESEND_API_KEY", "")),
@@ -72,6 +75,9 @@ func LoadConfig(path string) (Config, error) {
 		BootstrapAdminName:     strings.TrimSpace(configValue(values, "BOOTSTRAP_ADMIN_NAME", "")),
 		BootstrapAdminEmail:    normalizeEmail(configValue(values, "BOOTSTRAP_ADMIN_EMAIL", "")),
 		BootstrapAdminPassword: configValue(values, "BOOTSTRAP_ADMIN_PASSWORD", ""),
+	}
+	if err := validateEmail(cfg.ContactEmail); err != nil {
+		return Config{}, fmt.Errorf("invalid contact email: %w", err)
 	}
 
 	hostnameValue := strings.TrimSpace(configValue(values, "TURNSTILE_HOSTNAMES", ""))

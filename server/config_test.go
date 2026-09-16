@@ -22,6 +22,7 @@ func TestLoadConfig(t *testing.T) {
 APP_ENV=development
 LISTEN_ADDR=:9090
 APP_TITLE=My Habits
+CONTACT_EMAIL=contact@example.com
 DATABASE_PATH=data/storage.db
 WEB_ROOT=public
 APP_BASE_URL=http://localhost:9090
@@ -53,6 +54,9 @@ BOOTSTRAP_ADMIN_PASSWORD="a long bootstrap password"
 	}
 	if cfg.AppTitle != "My Habits" {
 		t.Errorf("AppTitle = %q", cfg.AppTitle)
+	}
+	if cfg.ContactEmail != "contact@example.com" {
+		t.Errorf("ContactEmail = %q", cfg.ContactEmail)
 	}
 	if cfg.TurnstileSecret != "secret with spaces" {
 		t.Errorf("TurnstileSecret = %q", cfg.TurnstileSecret)

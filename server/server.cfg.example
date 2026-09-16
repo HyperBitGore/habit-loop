@@ -2,6 +2,7 @@
 APP_ENV=development
 LISTEN_ADDR=:8081
 APP_TITLE=Habit Loop
+CONTACT_EMAIL=privacy@example.com
 DATABASE_PATH=storage.db
 WEB_ROOT=../web
 APP_BASE_URL=http://localhost:8081

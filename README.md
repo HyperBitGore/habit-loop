@@ -78,6 +78,7 @@ Real `server.cfg` files are ignored by Git because they contain secrets.
 | `APP_ENV` | `development`, `production`, or `test` |
 | `LISTEN_ADDR` | HTTP listen address, such as `:8081` |
 | `APP_TITLE` | Application title shown in browser titles and frontend branding |
+| `CONTACT_EMAIL` | Contact address shown on the Terms and Privacy pages |
 | `DATABASE_PATH` | SQLite database file |
 | `WEB_ROOT` | Directory containing the frontend files |
 | `APP_BASE_URL` | Public absolute URL used in verification and reset links |
@@ -128,6 +129,8 @@ Example production configuration:
 ```ini
 APP_ENV=production
 LISTEN_ADDR=:8081
+APP_TITLE=Habit Loop
+CONTACT_EMAIL=privacy@example.com
 DATABASE_PATH=/var/lib/habit-loop/storage.db
 WEB_ROOT=/opt/habit-loop/web
 APP_BASE_URL=https://todosloop.com

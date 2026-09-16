@@ -14,6 +14,7 @@ import (
 
 // TODO
 //	- reorderable habits and todos
+//	- import uhabit datbase and csv
 //	- Multiple day todos
 //	- Trackable metrics
 //	- database backup script
@@ -27,7 +28,7 @@ var (
 	appStore             *Store
 	loginLimiter         = newRateLimiter(10, time.Minute)
 	loginAccountLimiter  = newRateLimiter(10, time.Minute)
-	registrationLimiter  = newRateLimiter(5, time.Hour)
+	registrationLimiter  = newRateLimiter(5, time.Hour) 
 	accountCreateLimiter = newRateLimiter(3, time.Hour)
 	resetLimiter         = newRateLimiter(5, time.Hour)
 	resetAccountLimiter  = newRateLimiter(3, time.Hour)
@@ -175,7 +176,10 @@ func buildHandler(cfg Config) http.Handler {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, map[string]string{"title": cfg.AppTitle})
+		writeJSON(w, http.StatusOK, map[string]string{
+			"title":         cfg.AppTitle,
+			"contact_email": cfg.ContactEmail,
+		})
 	})
 
 	mux.Handle("/api/login", rateLimitMiddleware(loginLimiter, nil, http.HandlerFunc(HandleLogin)))
