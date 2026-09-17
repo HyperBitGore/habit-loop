@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -105,12 +107,56 @@ func securityHeadersMiddleware(cfg Config, next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'sha256-TqomTimjH0gM9fZ606V8bezvQuqM2dIjJ8oUH2f7WdA=' 'sha256-PDGycO4qFzC637wnUZAOrNTHM83Cy7b4yprIbUPy+3k=' 'sha256-zZtMPi5ona7XjWO7Kc5FLhBT/sf+jJOavo85KrLQoZ8=' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://*.adtrafficquality.google; script-src-elem 'self' 'sha256-TqomTimjH0gM9fZ606V8bezvQuqM2dIjJ8oUH2f7WdA=' 'sha256-PDGycO4qFzC637wnUZAOrNTHM83Cy7b4yprIbUPy+3k=' 'sha256-zZtMPi5ona7XjWO7Kc5FLhBT/sf+jJOavo85KrLQoZ8=' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://*.adtrafficquality.google; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google; frame-src https://challenges.cloudflare.com https://googleads.g.doubleclick.net https://*.adtrafficquality.google https://www.google.com; connect-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.adtrafficquality.google https://csi.gstatic.com; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+		nonceBytes := make([]byte, 32)
+		if _, err := rand.Read(nonceBytes); err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		nonce := base64.RawStdEncoding.EncodeToString(nonceBytes)
+		w.Header().Set("Content-Security-Policy", "object-src 'none'; script-src 'nonce-"+nonce+"' 'unsafe-inline' 'unsafe-eval' 'strict-dynamic' https: http:; script-src-elem 'self' https: http:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google; frame-src https://challenges.cloudflare.com https://googleads.g.doubleclick.net https://*.adtrafficquality.google https://www.google.com; connect-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.adtrafficquality.google https://csi.gstatic.com; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 		if cfg.Environment == "production" {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
-		next.ServeHTTP(w, r)
+		recorder := &nonceResponseWriter{header: w.Header()}
+		next.ServeHTTP(recorder, r)
+		recorder.flush(w, nonce)
 	})
+}
+
+type nonceResponseWriter struct {
+	header http.Header
+	body   bytes.Buffer
+	status int
+}
+
+func (w *nonceResponseWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *nonceResponseWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+}
+
+func (w *nonceResponseWriter) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.body.Write(body)
+}
+
+func (w *nonceResponseWriter) flush(destination http.ResponseWriter, nonce string) {
+	body := w.body.Bytes()
+	if bytes.Contains(body, []byte("<script")) {
+		body = bytes.ReplaceAll(body, []byte("<script"), []byte(`<script nonce="`+nonce+`"`))
+		w.header.Del("Content-Length")
+	}
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	destination.WriteHeader(w.status)
+	_, _ = destination.Write(body)
 }
 
 func userFromContext(ctx context.Context) *User {

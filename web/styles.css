@@ -621,6 +621,12 @@ select {
   text-align: center;
 }
 
+.ad-slot:has(.adsbygoogle[data-ad-status="unfilled"]) {
+  min-height: 0;
+  height: 0;
+  margin-bottom: 0;
+}
+
 .ad-slot-test {
   display: grid;
   min-height: 90px;

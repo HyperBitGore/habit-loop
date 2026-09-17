@@ -32,7 +32,7 @@ async function loadAds () {
     if (!script) {
         script = document.createElement("script");
         script.async = true;
-        script.crossOrigin = "anonymous";
+        script.nonce = document.querySelector("script[nonce]")?.nonce || "";
         script.src = scriptURL;
     }
 
