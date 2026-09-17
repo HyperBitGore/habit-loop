@@ -3,6 +3,7 @@ import { apiFetch, getNote, reorderItems, saveNote } from "./api.js";
 let detailHabit = null;
 let calendarMonth = new Date();
 let habitArray = [];
+let showInactiveHabits = false;
 
 function localDateString (date = new Date()) {
     const pad = (value) => String(value).padStart(2, "0");
@@ -150,6 +151,9 @@ async function openHabitDetail (habit, date) {
     calendarMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const stats = calculateHabitStats(habit.completions ?? [], habit.skips ?? []);
     document.querySelector("#habit-detail-name").value = habit.name;
+    const statusButton = document.querySelector("#habit-detail-status");
+    statusButton.dataset.status = habit.status === "inactive" ? "active" : "inactive";
+    statusButton.textContent = habit.status === "inactive" ? "Set active" : "Set inactive";
     const scheduleMode = document.querySelector("#habit-detail-schedule-mode");
     scheduleMode.value = habit.days_mode ? "days" : "interval";
     document.querySelector("#habit-detail-interval").value = Math.max(1, Number(habit.interval) || 1);
@@ -184,8 +188,14 @@ function renderHabits (habits, date) {
     const habitList = document.querySelector("#habit-list");
     habitList.replaceChildren();
     habitArray = habits;
-    for (const habit of habits.filter((habit) => shouldDisplayHabit(habit, date))) {
+    for (const habit of habits.filter((habit) =>
+        (showInactiveHabits || habit.status !== "inactive") &&
+        (habit.status === "inactive" || shouldDisplayHabit(habit, date))
+    )) {
         const listItem = document.createElement("li");
+        if (habit.status === "inactive") {
+            listItem.classList.add("is-inactive");
+        }
         listItem.draggable = true;
         listItem.dataset.id = String(habit.id);
         listItem.addEventListener("dragover", (event) => event.preventDefault());
@@ -328,6 +338,11 @@ export async function fetchHabits (date) {
 
     const habits = await response.json();
     renderHabits(habits, date);
+}
+
+export async function setShowInactiveHabits (show, date) {
+    showInactiveHabits = show;
+    await fetchHabits(date);
 }
 
 export async function saveSelectedHabitExtras (date) {
@@ -498,6 +513,22 @@ export async function deleteSelectedHabit (date) {
     });
     if (!response.ok) {
         throw new Error(`Unable to delete habit. Status: ${response.status}`);
+    }
+    closeHabitDetail();
+    await fetchHabits(date);
+}
+
+export async function setSelectedHabitStatus (status, date) {
+    if (!detailHabit) {
+        return;
+    }
+    const response = await apiFetch("/api/set_habit_status", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({habit_id: detailHabit.id, status})
+    });
+    if (!response.ok) {
+        throw new Error(`Unable to update habit status. Status: ${response.status}`);
     }
     closeHabitDetail();
     await fetchHabits(date);

@@ -36,6 +36,7 @@ type Habit struct {
 	MetricName   string      `json:"metric_name,omitempty"`
 	MetricGoal   float64     `json:"metric_goal"`
 	MetricValue  float64     `json:"metric_value"`
+	Status       string      `json:"status"`
 }
 
 type reorderRequest struct {
@@ -167,6 +168,7 @@ func HandleGetHabits(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
+
 	user := requestUser(w, r)
 	if user == nil {
 		return
@@ -177,6 +179,34 @@ func HandleGetHabits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, habits)
+}
+
+func HandleSetHabitStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var request struct {
+		HabitID uint64 `json:"habit_id"`
+		Status  string `json:"status"`
+	}
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if request.Status != "active" && request.Status != "inactive" {
+		writeAPIError(w, http.StatusBadRequest, "Invalid habit status")
+		return
+	}
+	user := requestUser(w, r)
+	if user == nil {
+		return
+	}
+	if err := appStore.SetHabitStatus(r.Context(), user.ID, request.HabitID, request.Status); err != nil {
+		writeHabitMutationError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func HandleAddHabit(w http.ResponseWriter, r *http.Request) {

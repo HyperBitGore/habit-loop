@@ -26,6 +26,8 @@ type Config struct {
 	AdSensePublisherID     string
 	AdSenseAdSlot          string
 	AdSenseTestPlacement   bool
+	PublicRegistration     bool
+	PublicRegistrationSet  bool
 	SecureCookies          bool
 	TrustProxyHeaders      bool
 	TrustedProxies         []*net.IPNet
@@ -49,6 +51,7 @@ var allowedConfigKeys = map[string]struct{}{
 	"ADSENSE_PUBLISHER_ID":     {},
 	"ADSENSE_AD_SLOT":          {},
 	"ADSENSE_TEST_PLACEMENT":   {},
+	"PUBLIC_REGISTRATION":      {},
 	"SECURE_COOKIES":           {},
 	"TRUST_PROXY_HEADERS":      {},
 	"TRUSTED_PROXY_CIDRS":      {},
@@ -88,6 +91,11 @@ func LoadConfig(path string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	cfg.PublicRegistration, err = configBool(values, "PUBLIC_REGISTRATION", true)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.PublicRegistrationSet = true
 	if err := validateEmail(cfg.ContactEmail); err != nil {
 		return Config{}, fmt.Errorf("invalid contact email: %w", err)
 	}

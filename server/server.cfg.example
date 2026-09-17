@@ -6,6 +6,7 @@ CONTACT_EMAIL=privacy@example.com
 DATABASE_PATH=storage.db
 WEB_ROOT=../web
 APP_BASE_URL=http://localhost:8081
+PUBLIC_REGISTRATION=true
 
 # Cloudflare Turnstile
 TURNSTILE_SECRET=replace-with-widget-secret

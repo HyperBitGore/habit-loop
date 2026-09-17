@@ -16,6 +16,10 @@ func HandleCreateAccount(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
+	if appConfig.PublicRegistrationSet && !appConfig.PublicRegistration {
+		writeAPIError(w, http.StatusForbidden, "Public registration is disabled")
+		return
+	}
 	var account struct {
 		Name           string `json:"name"`
 		Email          string `json:"email"`

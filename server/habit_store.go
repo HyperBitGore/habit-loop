@@ -14,7 +14,7 @@ func (s *Store) ListHabits(ctx context.Context, userID int, selectedDate ...stri
 		       COALESCE(d.sunday, FALSE), COALESCE(d.monday, FALSE),
 		       COALESCE(d.tuesday, FALSE), COALESCE(d.wednesday, FALSE),
 		       COALESCE(d.thursday, FALSE), COALESCE(d.friday, FALSE),
-		       COALESCE(d.saturday, FALSE), 'completion', c.date
+		       COALESCE(d.saturday, FALSE), h.status, 'completion', c.date
 		FROM habits h
 		LEFT JOIN days_of_week d ON d.id = h.days_of_week_id
 		LEFT JOIN completions c ON c.habit_id = h.id
@@ -24,7 +24,7 @@ func (s *Store) ListHabits(ctx context.Context, userID int, selectedDate ...stri
 		       COALESCE(d.sunday, FALSE), COALESCE(d.monday, FALSE),
 		       COALESCE(d.tuesday, FALSE), COALESCE(d.wednesday, FALSE),
 		       COALESCE(d.thursday, FALSE), COALESCE(d.friday, FALSE),
-		       COALESCE(d.saturday, FALSE), 'skip', s.date
+		       COALESCE(d.saturday, FALSE), h.status, 'skip', s.date
 		FROM habits h
 		LEFT JOIN days_of_week d ON d.id = h.days_of_week_id
 		LEFT JOIN skips s ON s.habit_id = h.id
@@ -40,7 +40,7 @@ func (s *Store) ListHabits(ctx context.Context, userID int, selectedDate ...stri
 	order := make([]uint64, 0)
 	for rows.Next() {
 		var id uint64
-		var name, kind string
+		var name, status, kind string
 		var interval int
 		var daysMode bool
 		var startDate string
@@ -63,6 +63,7 @@ func (s *Store) ListHabits(ctx context.Context, userID int, selectedDate ...stri
 			&daysOfWeek.Thursday,
 			&daysOfWeek.Friday,
 			&daysOfWeek.Saturday,
+			&status,
 			&kind,
 			&date,
 		); err != nil {
@@ -78,13 +79,16 @@ func (s *Store) ListHabits(ctx context.Context, userID int, selectedDate ...stri
 				StartDate:   startDate,
 				DaysOfWeek:  daysOfWeek,
 				Position:    position,
+				Status:      status,
 				Completions: []time.Time{},
 				Skips:       []time.Time{},
 			}
+
 			if daysOfWeekID.Valid {
 				id := uint64(daysOfWeekID.Int64)
 				habit.DaysOfWeekID = &id
 			}
+
 			habitsByID[id] = habit
 			order = append(order, id)
 		}
@@ -442,4 +446,21 @@ func (s *Store) RemoveHabitDate(
 
 func validHabitDateTable(table string) bool {
 	return table == "completions" || table == "skips"
+}
+
+func (s *Store) SetHabitStatus(ctx context.Context, userID int, habitID uint64, status string) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE habits SET status = ? WHERE id = ? AND user_id = ?
+	`, status, habitID, userID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errHabitNotFound
+	}
+	return nil
 }

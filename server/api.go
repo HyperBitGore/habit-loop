@@ -13,6 +13,15 @@ import (
 	"time"
 )
 
+// REFINE
+//	- Move everything to clean seperate packages
+//	- Remove unneeded code
+//	- Code audit for simplicity
+//	- Optimizations
+//	- Move frontend to React
+//	- add better admin controls
+//		- see users total todos/habits
+
 var (
 	appConfig            Config
 	emailSender          EmailSender
@@ -173,6 +182,7 @@ func buildHandler(cfg Config) http.Handler {
 			"adsense_publisher_id":   cfg.AdSensePublisherID,
 			"adsense_ad_slot":        cfg.AdSenseAdSlot,
 			"adsense_test_placement": cfg.AdSenseTestPlacement,
+			"public_registration":    cfg.PublicRegistration,
 		})
 	})
 	mux.HandleFunc("/ads.txt", func(w http.ResponseWriter, r *http.Request) {
@@ -209,6 +219,8 @@ func buildHandler(cfg Config) http.Handler {
 	mux.Handle("/api/current_user", authMiddleware(http.HandlerFunc(HandleCurrentUser)))
 	mux.Handle("/api/profile", authMiddleware(http.HandlerFunc(HandleUpdateProfile)))
 	mux.Handle("/api/import/uhabit", authMiddleware(http.HandlerFunc(HandleUHabitDBUpload)))
+	mux.Handle("/api/export/uhabit", authMiddleware(http.HandlerFunc(HandleUHabitDBExport)))
+	mux.Handle("/api/export/csv", authMiddleware(http.HandlerFunc(HandleHabitCSVExport)))
 	mux.Handle("/api/get_habits", authMiddleware(http.HandlerFunc(HandleGetHabits)))
 	mux.Handle("/api/habit_summary", authMiddleware(http.HandlerFunc(HandleHabitSummary)))
 	mux.Handle("/api/add_habit", authMiddleware(http.HandlerFunc(HandleAddHabit)))
@@ -219,6 +231,7 @@ func buildHandler(cfg Config) http.Handler {
 	mux.Handle("/api/skip_habit", authMiddleware(http.HandlerFunc(HandleSkipHabit)))
 	mux.Handle("/api/unskip_habit", authMiddleware(http.HandlerFunc(HandleUnskipHabit)))
 	mux.Handle("/api/save_metric", authMiddleware(http.HandlerFunc(HandleSaveMetric)))
+	mux.Handle("/api/set_habit_status", authMiddleware(http.HandlerFunc(HandleSetHabitStatus)))
 
 	mux.Handle("/api/register_user", adminMiddleware(http.HandlerFunc(HandleRegisterUser)))
 	mux.Handle("/api/get_users", adminMiddleware(http.HandlerFunc(HandleGetUsers)))

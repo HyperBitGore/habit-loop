@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-const currentSchemaVersion = 5
+const currentSchemaVersion = 6
 
 func runMigrations(db *sql.DB) error {
 	hasMigrationsTable, err := tableExists(db, "schema_migrations")
@@ -31,9 +31,13 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("database schema version %d is newer than supported version %d", version, currentSchemaVersion)
 	}
 	if version < currentSchemaVersion {
+		if version == 5 {
+			return migrateToV6(db)
+		}
 		if version == 4 {
 			return migrateToV5(db)
 		}
+
 		if version == 3 {
 			return migrateToV4(db)
 		}
@@ -55,6 +59,24 @@ func runMigrations(db *sql.DB) error {
 		)
 	}
 	return nil
+}
+
+func migrateToV6(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`ALTER TABLE habits ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive'))`); err != nil {
+		return fmt.Errorf("add habit status: %w", err)
+	}
+	if _, err := tx.Exec(`CREATE INDEX habits_user_status_idx ON habits(user_id, status)`); err != nil {
+		return fmt.Errorf("index habit status: %w", err)
+	}
+	if _, err := tx.Exec("INSERT INTO schema_migrations(version) VALUES (6)"); err != nil {
+		return fmt.Errorf("record schema version: %w", err)
+	}
+	return tx.Commit()
 }
 
 func migrateToV5(db *sql.DB) error {
@@ -293,7 +315,8 @@ func createSchema(tx *sql.Tx) error {
 			days_mode BOOLEAN NOT NULL DEFAULT FALSE CHECK (days_mode IN (0, 1)),
 			start_date TEXT NOT NULL DEFAULT CURRENT_DATE,
 			days_of_week_id INTEGER UNIQUE REFERENCES days_of_week(id) ON DELETE SET NULL,
-			position INTEGER NOT NULL DEFAULT 0
+			position INTEGER NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive'))
 		)`,
 		`CREATE TABLE completions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -350,6 +373,7 @@ func createSchema(tx *sql.Tx) error {
 		)`,
 		`CREATE INDEX todos_user_date_idx ON todos(user_id, date)`,
 		`CREATE INDEX habits_user_idx ON habits(user_id)`,
+		`CREATE INDEX habits_user_status_idx ON habits(user_id, status)`,
 		`CREATE INDEX sessions_user_idx ON sessions(user_id)`,
 		`CREATE INDEX sessions_expiry_idx ON sessions(expires_at)`,
 		`CREATE INDEX verification_expiry_idx ON email_verifications(expires_at)`,

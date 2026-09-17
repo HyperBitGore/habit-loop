@@ -11,6 +11,7 @@
   <body>
     <main class="auth-page">
       <section class="auth-card profile-card">
+        <a class="page-link" href="./todo.html">Back to habits and todos</a>
         <p class="eyebrow" data-site-title>Habit Loop</p>
         <h1>User settings</h1>
 
@@ -49,6 +50,11 @@
           <p id="import-message" class="auth-error" role="status" hidden></p>
           <button type="submit">Import uHabits database</button>
         </form>
+        <p class="auth-intro">Export your habit history for backup or migration.</p>
+        <div class="popup-actions">
+          <button id="export-uhabit" type="button">Export uHabits database</button>
+          <button id="export-csv" type="button" class="auth-secondary">Export CSV</button>
+        </div>
 
         <section class="danger-zone" aria-labelledby="delete-account-heading">
           <h2 id="delete-account-heading">Delete account</h2>
@@ -67,7 +73,6 @@
         </section>
 
         <button id="logout" class="auth-secondary" type="button">Log out</button>
-        <a class="page-link" href="./todo.html">Back to habits and todos</a>
       </section>
     </main>
   </body>

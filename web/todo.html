@@ -95,7 +95,13 @@
             <p class="section-kicker">Keep the rhythm</p>
             <h2 id="habits-heading">Habits</h2>
           </div>
-          <button id="add-habit" class="primary-button" type="button">Add habit</button>
+          <div class="section-actions">
+            <label>
+              <input id="show-inactive-habits" type="checkbox" />
+              Show inactive
+            </label>
+            <button id="add-habit" class="primary-button" type="button">Add habit</button>
+          </div>
         </div>
         <ul id="habit-list" class="task-list" aria-live="polite"></ul>
       </section>
@@ -239,6 +245,7 @@
           </section>
           <p id="habit-detail-error" class="auth-error" role="alert" hidden></p>
           <button type="submit">Save</button>
+          <button id="habit-detail-status" type="button" class="auth-secondary">Set inactive</button>
           <button id="habit-detail-delete" type="button">Delete</button>
         </form>
       </section>

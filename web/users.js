@@ -11,6 +11,17 @@ const loginTurnstile = loginForm
     : null;
 let registrationTurnstile = null;
 
+if (openRegistrationButton) {
+    fetch("/api/app-config")
+        .then((response) => response.json())
+        .then((config) => {
+            if (config.public_registration === false) {
+                openRegistrationButton.hidden = true;
+            }
+        })
+        .catch(() => {});
+}
+
 function trackTurnstile (promise) {
     promise.catch(() => {});
     return promise;
@@ -249,7 +260,16 @@ export async function importUHabitDatabase (file) {
     if (!response.ok) {
         throw new Error(await responseError(response, "Unable to import the uHabits database."));
     }
+
     return response.json();
+}
+
+export function exportUHabitDatabase () {
+    window.location.assign("/api/export/uhabit");
+}
+
+export function exportHabitsCSV () {
+    window.location.assign("/api/export/csv");
 }
 
 export async function getUsers ({ search = "", cursor = "", signal } = {}) {

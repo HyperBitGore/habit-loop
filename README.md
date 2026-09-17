@@ -93,6 +93,7 @@ Real `server.cfg` files are ignored by Git because they contain secrets.
 | `ADSENSE_PUBLISHER_ID` | Optional Google AdSense publisher ID; leave empty to disable ads |
 | `ADSENSE_AD_SLOT` | Optional responsive display ad slot ID; leave empty to disable ad units |
 | `ADSENSE_TEST_PLACEMENT` | Draw blank ad-sized placement boxes without loading Google ads |
+| `PUBLIC_REGISTRATION` | Whether visitors can create accounts; defaults to `true` |
 | `SECURE_COOKIES` | Whether authentication cookies require HTTPS |
 | `TRUST_PROXY_HEADERS` | Whether headers from trusted reverse proxies are used |
 | `TRUSTED_PROXY_CIDRS` | Comma-separated trusted proxy IP addresses or CIDRs |
@@ -226,7 +227,7 @@ Administrator routes additionally require the `admin` role.
 | `POST` | `/api/verify-email` | Consume an email-verification token |
 | `POST` | `/api/request-password-reset` | Send a password-reset email |
 | `POST` | `/api/reset-password` | Consume a password-reset token |
-| `GET` | `/api/app-config` | Return public title, contact, and ad configuration |
+| `GET` | `/api/app-config` | Return public title, contact, ad, and registration configuration |
 | `GET` | `/ads.txt` | Return the AdSense seller declaration when ads are enabled |
 | `GET` | `/api/current_user` | Return the authenticated user |
 | `PUT` | `/api/profile` | Update username or email |
@@ -241,12 +242,15 @@ Administrator routes additionally require the `admin` role.
 | `GET` | `/api/todo_history` | List non-goal todos across dates |
 | `GET`/`PUT`/`PATCH` | `/api/goals` | List, create, and activate or pause goals |
 | `POST` | `/api/import/uhabit` | Import habits from a uHabit database upload |
+| `GET` | `/api/export/uhabit` | Download the user's habits as a uHabits-compatible SQLite database |
+| `GET` | `/api/export/csv` | Download the user's habits and history as CSV |
 | `PUT` | `/api/save_metric` | Save a habit metric and its dated value |
 | `DELETE` | `/api/remove_task` | Delete a todo |
 | `GET` | `/api/get_habits` | List habits with schedules and history |
 | `GET` | `/api/habit_summary` | Return habit completion and skip summaries |
 | `PUT` | `/api/add_habit` | Create a habit |
 | `PUT` | `/api/edit_habit` | Edit a habit and its schedule |
+| `POST` | `/api/set_habit_status` | Set a habit to active or inactive |
 | `DELETE` | `/api/delete_habit` | Delete a habit |
 | `POST` | `/api/complete_habit` | Mark a habit completed for a date |
 | `POST` | `/api/uncomplete_habit` | Remove a completion |

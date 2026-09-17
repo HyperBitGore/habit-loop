@@ -1,5 +1,7 @@
 import {
     deleteAccount,
+    exportHabitsCSV,
+    exportUHabitDatabase,
     getCurrentUser,
     importUHabitDatabase,
     logout,
@@ -116,3 +118,5 @@ deleteAccountForm.addEventListener("submit", async (event) => {
 });
 
 document.querySelector("#logout").addEventListener("click", logout);
+document.querySelector("#export-uhabit").addEventListener("click", exportUHabitDatabase);
+document.querySelector("#export-csv").addEventListener("click", exportHabitsCSV);

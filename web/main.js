@@ -10,7 +10,9 @@ import {
     saveSelectedHabit,
     saveSelectedHabitExtras,
     saveHabitMetricValue,
-    setMetricMode
+    setMetricMode,
+    setSelectedHabitStatus,
+    setShowInactiveHabits
 } from "./habits.js";
 
 let currentTodoName = "";
@@ -65,6 +67,7 @@ const habitError = document.querySelector("#habit-error");
 const habitDetailCloseButton = document.querySelector("#habit-detail-close");
 const habitDetailForm = document.querySelector("#habit-detail-form");
 const habitDetailDeleteButton = document.querySelector("#habit-detail-delete");
+const habitDetailStatusButton = document.querySelector("#habit-detail-status");
 const habitDetailError = document.querySelector("#habit-detail-error");
 const habitMetricToggle = document.querySelector("#habit-metric-toggle");
 let metricEntry = null;
@@ -82,6 +85,7 @@ const settingsDropdown = document.querySelector("#settings-dropdown");
 const adminLink = document.querySelector("#admin-link");
 const previousDateButton = document.querySelector("#date-previous");
 const nextDateButton = document.querySelector("#date-next");
+const showInactiveHabits = document.querySelector("#show-inactive-habits");
 
 function closeSettingsMenu () {
     settingsDropdown.hidden = true;
@@ -284,6 +288,25 @@ habitDetailDeleteButton.addEventListener("click", async () => {
         habitDetailError.textContent = error.message;
         habitDetailError.hidden = false;
     }
+});
+
+habitDetailStatusButton.addEventListener("click", async () => {
+    habitDetailError.hidden = true;
+    try {
+        await setSelectedHabitStatus(
+            habitDetailStatusButton.dataset.status,
+            taskDateInput.value
+        );
+    } catch (error) {
+        habitDetailError.textContent = error.message;
+        habitDetailError.hidden = false;
+    }
+});
+
+showInactiveHabits.addEventListener("change", () => {
+    setShowInactiveHabits(showInactiveHabits.checked, taskDateInput.value).catch((error) => {
+        console.error("Failed to update inactive habit visibility:", error);
+    });
 });
 
 getCurrentUser()
