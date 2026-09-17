@@ -14,7 +14,6 @@ import (
 
 // TODO
 //	- reorderable habits and todos
-//	- import uhabit datbase and csv
 //	- Multiple day todos
 //	- Trackable metrics
 //	- database backup script
@@ -28,7 +27,7 @@ var (
 	appStore             *Store
 	loginLimiter         = newRateLimiter(10, time.Minute)
 	loginAccountLimiter  = newRateLimiter(10, time.Minute)
-	registrationLimiter  = newRateLimiter(5, time.Hour) 
+	registrationLimiter  = newRateLimiter(5, time.Hour)
 	accountCreateLimiter = newRateLimiter(3, time.Hour)
 	resetLimiter         = newRateLimiter(5, time.Hour)
 	resetAccountLimiter  = newRateLimiter(3, time.Hour)
@@ -197,6 +196,7 @@ func buildHandler(cfg Config) http.Handler {
 	mux.Handle("/api/set_password", authMiddleware(http.HandlerFunc(HandleSetPassword)))
 	mux.Handle("/api/current_user", authMiddleware(http.HandlerFunc(HandleCurrentUser)))
 	mux.Handle("/api/profile", authMiddleware(http.HandlerFunc(HandleUpdateProfile)))
+	mux.Handle("/api/import/uhabit", authMiddleware(http.HandlerFunc(HandleUHabitDBUpload)))
 	mux.Handle("/api/get_habits", authMiddleware(http.HandlerFunc(HandleGetHabits)))
 	mux.Handle("/api/add_habit", authMiddleware(http.HandlerFunc(HandleAddHabit)))
 	mux.Handle("/api/delete_habit", authMiddleware(http.HandlerFunc(HandleDeleteHabit)))

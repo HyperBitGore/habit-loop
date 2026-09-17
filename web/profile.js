@@ -1,4 +1,11 @@
-import { deleteAccount, getCurrentUser, logout, setPassword, updateProfile } from "./users.js";
+import {
+    deleteAccount,
+    getCurrentUser,
+    importUHabitDatabase,
+    logout,
+    setPassword,
+    updateProfile
+} from "./users.js";
 
 const profileForm = document.querySelector("#profile-form");
 const profileName = document.querySelector("#profile-name");
@@ -7,6 +14,8 @@ const pendingEmail = document.querySelector("#pending-email");
 const profileMessage = document.querySelector("#profile-message");
 const passwordForm = document.querySelector("#password-form");
 const passwordMessage = document.querySelector("#password-message");
+const importForm = document.querySelector("#import-form");
+const importMessage = document.querySelector("#import-message");
 const deleteAccountForm = document.querySelector("#delete-account-form");
 const deleteAccountMessage = document.querySelector("#delete-account-message");
 
@@ -63,6 +72,31 @@ passwordForm.addEventListener("submit", async (event) => {
         window.location.assign("./login.html");
     } catch (error) {
         showMessage(passwordMessage, error.message);
+    }
+});
+
+importForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    importMessage.hidden = true;
+    const formData = new FormData(importForm);
+    const file = formData.get("database");
+    if (!(file instanceof File) || file.size === 0) {
+        showMessage(importMessage, "Choose a uHabits database file.");
+        return;
+    }
+    if (!window.confirm("Import this uHabits database into your account?")) {
+        return;
+    }
+    try {
+        const summary = await importUHabitDatabase(file);
+        importForm.reset();
+        showMessage(
+            importMessage,
+            `Imported ${summary.habits} habits and ${summary.completions} completions.`,
+            true
+        );
+    } catch (error) {
+        showMessage(importMessage, error.message);
     }
 });
 

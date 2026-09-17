@@ -38,6 +38,18 @@
           <button type="submit">Update password</button>
         </form>
 
+        <h2>Import data</h2>
+        <form id="import-form">
+          <p class="auth-intro">
+            Import habits and completion history from a uHabits database.
+            Existing data will not be removed.
+          </p>
+          <label for="import-database">uHabits database</label>
+          <input id="import-database" name="database" type="file" accept=".db,application/vnd.sqlite3,application/octet-stream" required />
+          <p id="import-message" class="auth-error" role="status" hidden></p>
+          <button type="submit">Import uHabits database</button>
+        </form>
+
         <section class="danger-zone" aria-labelledby="delete-account-heading">
           <h2 id="delete-account-heading">Delete account</h2>
           <p class="auth-intro">

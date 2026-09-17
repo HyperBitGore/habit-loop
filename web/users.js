@@ -239,6 +239,19 @@ export async function updateProfile (name, email, currentPassword) {
     return response.json();
 }
 
+export async function importUHabitDatabase (file) {
+    const formData = new FormData();
+    formData.append("database", file);
+    const response = await fetch("/api/import/uhabit", {
+        method: "POST",
+        body: formData
+    });
+    if (!response.ok) {
+        throw new Error(await responseError(response, "Unable to import the uHabits database."));
+    }
+    return response.json();
+}
+
 export async function getUsers ({ search = "", cursor = "", signal } = {}) {
     const parameters = new URLSearchParams();
     if (search) {
