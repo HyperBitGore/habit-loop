@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-func (s *Store) ListHabits(ctx context.Context, userID int) ([]Habit, error) {
+func (s *Store) ListHabits(ctx context.Context, userID int, selectedDate ...string) ([]Habit, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT h.id, h.name, h.interval, h.days_mode, h.start_date, h.days_of_week_id,
+		SELECT h.id, h.name, h.interval, h.days_mode, h.start_date, h.days_of_week_id, h.position,
 		       COALESCE(d.sunday, FALSE), COALESCE(d.monday, FALSE),
 		       COALESCE(d.tuesday, FALSE), COALESCE(d.wednesday, FALSE),
 		       COALESCE(d.thursday, FALSE), COALESCE(d.friday, FALSE),
@@ -20,7 +20,7 @@ func (s *Store) ListHabits(ctx context.Context, userID int) ([]Habit, error) {
 		LEFT JOIN completions c ON c.habit_id = h.id
 		WHERE h.user_id = ?
 		UNION ALL
-		SELECT h.id, h.name, h.interval, h.days_mode, h.start_date, h.days_of_week_id,
+		SELECT h.id, h.name, h.interval, h.days_mode, h.start_date, h.days_of_week_id, h.position,
 		       COALESCE(d.sunday, FALSE), COALESCE(d.monday, FALSE),
 		       COALESCE(d.tuesday, FALSE), COALESCE(d.wednesday, FALSE),
 		       COALESCE(d.thursday, FALSE), COALESCE(d.friday, FALSE),
@@ -29,7 +29,7 @@ func (s *Store) ListHabits(ctx context.Context, userID int) ([]Habit, error) {
 		LEFT JOIN days_of_week d ON d.id = h.days_of_week_id
 		LEFT JOIN skips s ON s.habit_id = h.id
 		WHERE h.user_id = ?
-		ORDER BY 2, 1, 15
+		ORDER BY 7, 1, 16
 	`, userID, userID)
 	if err != nil {
 		return nil, err
@@ -45,6 +45,7 @@ func (s *Store) ListHabits(ctx context.Context, userID int) ([]Habit, error) {
 		var daysMode bool
 		var startDate string
 		var daysOfWeekID sql.NullInt64
+		var position int
 		var daysOfWeek DaysOfWeek
 		var date sql.NullString
 		if err := rows.Scan(
@@ -54,6 +55,7 @@ func (s *Store) ListHabits(ctx context.Context, userID int) ([]Habit, error) {
 			&daysMode,
 			&startDate,
 			&daysOfWeekID,
+			&position,
 			&daysOfWeek.Sunday,
 			&daysOfWeek.Monday,
 			&daysOfWeek.Tuesday,
@@ -75,6 +77,7 @@ func (s *Store) ListHabits(ctx context.Context, userID int) ([]Habit, error) {
 				DaysMode:    daysMode,
 				StartDate:   startDate,
 				DaysOfWeek:  daysOfWeek,
+				Position:    position,
 				Completions: []time.Time{},
 				Skips:       []time.Time{},
 			}
@@ -105,6 +108,13 @@ func (s *Store) ListHabits(ctx context.Context, userID int) ([]Habit, error) {
 	for _, id := range order {
 		habits = append(habits, *habitsByID[id])
 	}
+	date := time.Now().UTC().Format("2006-01-02")
+	if len(selectedDate) > 0 && selectedDate[0] != "" {
+		date = selectedDate[0]
+	}
+	if err := s.loadHabitMetrics(ctx, userID, date, habits); err != nil {
+		return nil, err
+	}
 	return habits, nil
 }
 
@@ -119,9 +129,9 @@ func (s *Store) AddHabit(ctx context.Context, userID int, daysOfWeek DaysOfWeek,
 		return err
 	}
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO habits (user_id, name, interval, days_mode, start_date, days_of_week_id)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, userID, name, interval, daysMode, startDate, daysOfWeekID)
+		INSERT INTO habits (user_id, name, interval, days_mode, start_date, days_of_week_id, position)
+		VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM habits WHERE user_id = ?), 0))
+	`, userID, name, interval, daysMode, startDate, daysOfWeekID, userID)
 	if err != nil {
 		return err
 	}
@@ -141,6 +151,48 @@ func (s *Store) AddHabit(ctx context.Context, userID int, daysOfWeek DaysOfWeek,
 		return err
 	}
 	return nil
+}
+
+func (s *Store) ReorderHabits(ctx context.Context, userID int, ids []uint64) error {
+	rows, err := s.db.QueryContext(ctx, "SELECT id FROM habits WHERE user_id = ?", userID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	expected := make(map[uint64]struct{})
+	for rows.Next() {
+		var id uint64
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		expected[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(expected) != len(ids) {
+		return errReorderItems
+	}
+	for _, id := range ids {
+		if _, ok := expected[id]; !ok {
+			return errReorderItems
+		}
+		delete(expected, id)
+	}
+	if len(expected) != 0 {
+		return errReorderItems
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for position, id := range ids {
+		if _, err := tx.ExecContext(ctx, "UPDATE habits SET position = ? WHERE id = ? AND user_id = ?", position, id, userID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func insertDaysOfWeek(tx *sql.Tx, days DaysOfWeek) (int64, error) {
@@ -344,6 +396,18 @@ func (s *Store) SetHabitDate(
 		ON CONFLICT(habit_id, date) DO NOTHING
 	`, insertTable), habitID, date); err != nil {
 		return err
+	}
+	if insertTable == "skips" {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO habit_metric_values (metric_id, date, amount)
+			SELECT m.id, ?, 0
+			FROM habit_metrics m
+			JOIN habits h ON h.id = m.habit_id
+			WHERE m.habit_id = ? AND h.user_id = ?
+			ON CONFLICT(metric_id, date) DO UPDATE SET amount = 0
+		`, date, habitID, userID); err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit()

@@ -13,13 +13,8 @@ import (
 )
 
 // TODO
-//	- reorderable habits and todos
-//	- Multiple day todos
-//	- Trackable metrics
-//	- database backup script
 //	- gpc
 //	- adsense
-//	- Goals
 
 var (
 	appConfig            Config
@@ -189,15 +184,21 @@ func buildHandler(cfg Config) http.Handler {
 	mux.HandleFunc("/api/reset-password", HandleResetPassword)
 
 	mux.Handle("/api/get_tasks", authMiddleware(http.HandlerFunc(handleGetTodos)))
+	mux.Handle("/api/reorder", authMiddleware(http.HandlerFunc(HandleReorder)))
 	mux.Handle("/api/add_task", authMiddleware(http.HandlerFunc(HandleAddTask)))
 	mux.Handle("/api/remove_task", authMiddleware(http.HandlerFunc(HandleRemoveTask)))
 	mux.Handle("/api/update_task", authMiddleware(http.HandlerFunc(HandleUpdateTask)))
+	mux.Handle("/api/notes", authMiddleware(http.HandlerFunc(HandleSaveNote)))
+	mux.Handle("/api/get_note", authMiddleware(http.HandlerFunc(HandleGetNote)))
+	mux.Handle("/api/todo_history", authMiddleware(http.HandlerFunc(HandleTodoHistory)))
+	mux.Handle("/api/goals", authMiddleware(http.HandlerFunc(HandleGoals)))
 	mux.Handle("/api/delete-account", authMiddleware(http.HandlerFunc(HandleDeleteAccount)))
 	mux.Handle("/api/set_password", authMiddleware(http.HandlerFunc(HandleSetPassword)))
 	mux.Handle("/api/current_user", authMiddleware(http.HandlerFunc(HandleCurrentUser)))
 	mux.Handle("/api/profile", authMiddleware(http.HandlerFunc(HandleUpdateProfile)))
 	mux.Handle("/api/import/uhabit", authMiddleware(http.HandlerFunc(HandleUHabitDBUpload)))
 	mux.Handle("/api/get_habits", authMiddleware(http.HandlerFunc(HandleGetHabits)))
+	mux.Handle("/api/habit_summary", authMiddleware(http.HandlerFunc(HandleHabitSummary)))
 	mux.Handle("/api/add_habit", authMiddleware(http.HandlerFunc(HandleAddHabit)))
 	mux.Handle("/api/delete_habit", authMiddleware(http.HandlerFunc(HandleDeleteHabit)))
 	mux.Handle("/api/edit_habit", authMiddleware(http.HandlerFunc(HandleEditHabit)))
@@ -205,6 +206,7 @@ func buildHandler(cfg Config) http.Handler {
 	mux.Handle("/api/uncomplete_habit", authMiddleware(http.HandlerFunc(HandleUncompleteHabit)))
 	mux.Handle("/api/skip_habit", authMiddleware(http.HandlerFunc(HandleSkipHabit)))
 	mux.Handle("/api/unskip_habit", authMiddleware(http.HandlerFunc(HandleUnskipHabit)))
+	mux.Handle("/api/save_metric", authMiddleware(http.HandlerFunc(HandleSaveMetric)))
 
 	mux.Handle("/api/register_user", adminMiddleware(http.HandlerFunc(HandleRegisterUser)))
 	mux.Handle("/api/get_users", adminMiddleware(http.HandlerFunc(HandleGetUsers)))

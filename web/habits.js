@@ -1,7 +1,8 @@
-import { apiFetch } from "./api.js";
+import { apiFetch, getNote, reorderItems, saveNote } from "./api.js";
 
 let detailHabit = null;
 let calendarMonth = new Date();
+let habitArray = [];
 
 function localDateString (date = new Date()) {
     const pad = (value) => String(value).padStart(2, "0");
@@ -143,7 +144,7 @@ export function changeHabitCalendarMonth (offset) {
     renderHabitCalendar();
 }
 
-function openHabitDetail (habit) {
+async function openHabitDetail (habit, date) {
     detailHabit = habit;
     const now = new Date();
     calendarMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -164,6 +165,11 @@ function openHabitDetail (habit) {
         formatDays(stats.longestStreak);
     document.querySelector("#habit-total-skips").textContent =
         formatDays(stats.totalSkips);
+    document.querySelector("#habit-metric-name").value = habit.metric_name || "";
+    document.querySelector("#habit-metric-goal").value = habit.metric_goal || "";
+    setMetricMode(Boolean(habit.metric_name));
+    document.querySelector("#habit-detail-note").value =
+        (await getNote("habit", habit.id, date)).body || "";
     renderHabitCalendar();
     document.querySelector("#habit-detail-error").hidden = true;
     document.querySelector("#habit-detail-popup").hidden = false;
@@ -177,8 +183,30 @@ export function closeHabitDetail () {
 function renderHabits (habits, date) {
     const habitList = document.querySelector("#habit-list");
     habitList.replaceChildren();
+    habitArray = habits;
     for (const habit of habits.filter((habit) => shouldDisplayHabit(habit, date))) {
         const listItem = document.createElement("li");
+        listItem.draggable = true;
+        listItem.dataset.id = String(habit.id);
+        listItem.addEventListener("dragover", (event) => event.preventDefault());
+        listItem.addEventListener("drop", async (event) => {
+            event.preventDefault();
+            const draggedID = event.dataTransfer.getData("text/plain");
+            const targetID = String(habit.id);
+            if (!draggedID || draggedID === targetID) {
+                return;
+            }
+            const visibleIDs = habits
+                .filter((item) => shouldDisplayHabit(item, date))
+                .map((item) => item.id);
+            const from = visibleIDs.indexOf(Number(draggedID));
+            const to = visibleIDs.indexOf(Number(targetID));
+            [visibleIDs[from], visibleIDs[to]] = [visibleIDs[to], visibleIDs[from]];
+            reorderVisibleHabits(visibleIDs, date);
+        });
+        listItem.addEventListener("dragstart", (event) => {
+            event.dataTransfer.setData("text/plain", String(habit.id));
+        });
 
         const habitName = document.createElement("span");
         habitName.className = "task-name";
@@ -190,24 +218,37 @@ function renderHabits (habits, date) {
             (completion) => completion.slice(0, 10) === date
         );
         const isSkipped = skips.some((skip) => skip.slice(0, 10) === date);
-        const completeButton = document.createElement("button");
-        completeButton.type = "button";
-        completeButton.className = "status-button";
-        completeButton.textContent = isComplete ? "✓" : "×";
-        completeButton.classList.toggle("is-complete", isComplete);
-        completeButton.setAttribute(
-            "aria-label",
-            isComplete ? `Mark ${habit.name} incomplete for ${date}` : `Complete ${habit.name} for ${date}`
-        );
-        completeButton.addEventListener("click", async (event) => {
-            event.stopPropagation();
-            if (isComplete) {
-                await uncompleteHabit(habit.id, date);
-            } else {
-                await completeHabit(habit.id, date);
-            }
-            await fetchHabits(date);
-        });
+        const completeButton = document.createElement(habit.metric_name ? "span" : "button");
+        completeButton.className = habit.metric_name ? "metric-status" : "status-button";
+        if (habit.metric_name) {
+            completeButton.textContent = `${habit.metric_value} / ${habit.metric_goal}`;
+            completeButton.classList.toggle("is-complete", isComplete);
+            completeButton.setAttribute("role", "button");
+            completeButton.tabIndex = 0;
+            completeButton.addEventListener("click", (event) => {
+                event.stopPropagation();
+                window.dispatchEvent(new CustomEvent("habit-metric-edit", {
+                    detail: { habit, date }
+                }));
+            });
+        } else {
+            completeButton.type = "button";
+            completeButton.textContent = isComplete ? "✓" : "×";
+            completeButton.classList.toggle("is-complete", isComplete);
+            completeButton.setAttribute(
+                "aria-label",
+                isComplete ? `Mark ${habit.name} incomplete for ${date}` : `Complete ${habit.name} for ${date}`
+            );
+            completeButton.addEventListener("click", async (event) => {
+                event.stopPropagation();
+                if (isComplete) {
+                    await uncompleteHabit(habit.id, date);
+                } else {
+                    await completeHabit(habit.id, date);
+                }
+                await fetchHabits(date);
+            });
+        }
 
         const skipButton = document.createElement("button");
         skipButton.type = "button";
@@ -230,21 +271,102 @@ function renderHabits (habits, date) {
 
         const habitActions = document.createElement("span");
         habitActions.className = "habit-actions";
-        habitActions.append(completeButton, skipButton);
+        habitActions.append(
+            createMoveButton(habit, date, -1),
+            createMoveButton(habit, date, 1),
+            completeButton,
+            skipButton
+        );
 
-        listItem.addEventListener("click", () => openHabitDetail(habit));
+        listItem.addEventListener("click", () => openHabitDetail(habit, date));
         listItem.append(habitName, habitActions);
         habitList.appendChild(listItem);
     }
 }
 
+function createMoveButton (habit, date, direction) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "status-button reorder-button";
+    button.textContent = direction < 0 ? "↑" : "↓";
+    button.setAttribute("aria-label", `Move ${habit.name} ${direction < 0 ? "up" : "down"}`);
+    button.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        const visible = habitArray.filter((item) => shouldDisplayHabit(item, date));
+        const index = visible.indexOf(habit);
+        const next = index + direction;
+        if (next < 0 || next >= visible.length) {
+            return;
+        }
+        [visible[index], visible[next]] = [visible[next], visible[index]];
+        reorderVisibleHabits(visible.map((item) => item.id), date);
+    });
+    return button;
+}
+
+function reorderVisibleHabits (visibleIDs, date) {
+    const visibleSet = new Set(visibleIDs);
+    const habitsByID = new Map(habitArray.map((habit) => [habit.id, habit]));
+    let index = 0;
+    habitArray = habitArray.map((habit) => {
+        if (!visibleSet.has(habit.id)) {
+            return habit;
+        }
+        return habitsByID.get(visibleIDs[index++]);
+    });
+    renderHabits(habitArray, date);
+    reorderItems("habits", habitArray.map((habit) => habit.id)).catch((error) => {
+        console.error("Failed to save habit order:", error);
+    });
+}
+
 export async function fetchHabits (date) {
-    const response = await apiFetch("/api/get_habits");
+    const response = await apiFetch(`/api/get_habits?date=${encodeURIComponent(date)}`);
     if (!response.ok) {
         throw new Error(`Unable to fetch habits. Status: ${response.status}`);
     }
+
     const habits = await response.json();
     renderHabits(habits, date);
+}
+
+export async function saveSelectedHabitExtras (date) {
+    if (!detailHabit) return;
+    const response = await apiFetch("/api/save_metric", {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            habit_id: detailHabit.id,
+            name: document.querySelector("#habit-metric-name").value,
+            goal: Number(document.querySelector("#habit-metric-goal").value),
+            date
+        })
+    });
+    if (!response.ok) throw new Error(`Unable to save metric. Status: ${response.status}`);
+    await saveNote("habit", detailHabit.id, date, document.querySelector("#habit-detail-note").value);
+}
+
+export async function saveHabitMetricValue (habit, date, value) {
+    const response = await apiFetch("/api/save_metric", {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            habit_id: habit.id,
+            name: habit.metric_name,
+            goal: habit.metric_goal,
+            value,
+            date
+        })
+    });
+    if (!response.ok) throw new Error(`Unable to save metric. Status: ${response.status}`);
+}
+
+export function setMetricMode (enabled) {
+    const fields = document.querySelector("#habit-metric-fields");
+    const toggle = document.querySelector("#habit-metric-toggle");
+    fields.hidden = !enabled;
+    toggle.textContent = enabled ? "On" : "Off";
+    toggle.setAttribute("aria-pressed", String(enabled));
 }
 
 export async function completeHabit (habitID, date) {
@@ -348,7 +470,12 @@ export async function saveSelectedHabit (name, date, schedule) {
         headers: {
             "X-Habit-ID": String(detailHabit.id),
             "X-Habit-Name": name,
-            "X-Habit-Completions": JSON.stringify(detailHabit.completions ?? []),
+            "X-Habit-Completions": JSON.stringify(
+                !detailHabit.metric_name &&
+                document.querySelector("#habit-metric-name").value.trim()
+                    ? []
+                    : detailHabit.completions ?? []
+            ),
             ...scheduleHeaders(schedule)
         }
     });

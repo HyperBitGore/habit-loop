@@ -11,6 +11,12 @@
   <body>
     <header class="page-header">
       <a class="wordmark" data-site-title href="./todo.html">Habit Loop</a>
+      <nav class="page-actions dashboard-actions" aria-label="Dashboard navigation">
+        <a class="button-link" href="./todo.html">Dashboard</a>
+        <a class="button-link" href="./goals.html">Goals</a>
+        <a class="button-link" href="./history.html">Todo history</a>
+        <a class="button-link" href="./habit-summary.html">Habit summaries</a>
+      </nav>
       <div class="settings-menu">
         <button
           id="settings-toggle"
@@ -200,6 +206,18 @@
               <dd id="habit-total-skips">0 days</dd>
             </div>
           </dl>
+          <div class="metric-mode-heading">
+            <label for="habit-metric-toggle">Metric mode</label>
+            <button id="habit-metric-toggle" class="secondary-button" type="button" aria-pressed="false">Off</button>
+          </div>
+          <div id="habit-metric-fields" hidden>
+            <label for="habit-metric-name">Metric name</label>
+            <input id="habit-metric-name" type="text" maxlength="100" placeholder="e.g. pages" />
+            <label for="habit-metric-goal">Daily metric goal</label>
+            <input id="habit-metric-goal" type="number" min="0" step="any" />
+          </div>
+          <label for="habit-detail-note">Note for selected date</label>
+          <textarea id="habit-detail-note" rows="4"></textarea>
           <section class="habit-calendar" aria-labelledby="habit-calendar-month">
             <div class="habit-calendar-controls">
               <button id="habit-calendar-previous" type="button" aria-label="Previous month">←</button>
@@ -232,8 +250,22 @@
         <input id="todo-detail-name" type="text" />
         <p>Date: <span id="todo-detail-date"></span></p>
         <p>Complete: <span id="todo-detail-complete"></span></p>
+        <label for="todo-detail-note">Note for this date</label>
+        <textarea id="todo-detail-note" rows="4"></textarea>
         <button type="button" id="todo-detail-save">Save</button>
         <button type="button" id="todo-detail-delete">Delete</button>
+      </section>
+    </div>
+
+    <div id="metric-value-popup" class="todo-popup-overlay" hidden>
+      <section class="todo-popup" role="dialog" aria-modal="true" aria-labelledby="metric-value-title">
+        <button id="metric-value-close" class="dialog-close" type="button" aria-label="Close">×</button>
+        <h2 id="metric-value-title">Enter metric</h2>
+        <p id="metric-value-date"></p>
+        <label for="metric-value-input">Value</label>
+        <input id="metric-value-input" type="number" min="0" step="any" />
+        <p id="metric-value-error" class="auth-error" role="alert" hidden></p>
+        <button id="metric-value-save" type="button">Save</button>
       </section>
     </div>
 

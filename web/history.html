@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Todo history - Habit Loop</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./site-config.js"></script>
+    <script type="module" src="./page-nav.js"></script>
+    <script type="module" src="./history.js"></script>
+  </head>
+  <body>
+    <header class="page-header">
+      <a class="wordmark" data-site-title href="./todo.html">Habit Loop</a>
+       <nav class="page-actions" aria-label="Page navigation">
+        <a class="button-link" href="./todo.html">Dashboard</a>
+        <a class="button-link" href="./goals.html">Goals</a>
+        <a class="button-link" href="./history.html">Todo history</a>
+        <a class="button-link" href="./habit-summary.html">Habit summaries</a>
+      </nav>
+      <div class="settings-menu">
+        <button id="settings-toggle" class="icon-button settings-toggle" type="button" aria-label="Open settings menu" aria-controls="settings-dropdown" aria-expanded="false"><span aria-hidden="true">⚙</span></button>
+        <div id="settings-dropdown" class="settings-dropdown" hidden>
+          <a href="./profile.html">User settings</a>
+          <a id="admin-link" href="./admin.html" hidden>Admin</a>
+          <button id="logout" type="button">Log out</button>
+        </div>
+      </div>
+    </header>
+    <main class="dashboard secondary-page">
+      <div class="dashboard-toolbar">
+        <div>
+          <p class="eyebrow">Everything you have captured</p>
+          <h1>Todo history</h1>
+        </div>
+      </div>
+      <div id="history" class="history-list"></div>
+    </main>
+  </body>
+</html>

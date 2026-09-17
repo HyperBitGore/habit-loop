@@ -62,6 +62,48 @@ func TestVersionedDatabaseStartupIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestVersionThreeDatabaseAddsPositions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v3.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY);
+		INSERT INTO schema_migrations(version) VALUES (3);
+		CREATE TABLE todos (id INTEGER PRIMARY KEY, user_id INTEGER, name TEXT, date TEXT, complete BOOLEAN);
+		CREATE TABLE habits (id INTEGER PRIMARY KEY, user_id INTEGER, name TEXT);
+		INSERT INTO todos(id, user_id, name, date) VALUES (2, 1, 'second', '2026-09-16'), (1, 1, 'first', '2026-09-16');
+		INSERT INTO habits(id, user_id, name) VALUES (2, 1, 'second'), (1, 1, 'first');
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = InitDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	var version, todoPosition, habitPosition int
+	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT position FROM todos WHERE id = 1").Scan(&todoPosition); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT position FROM habits WHERE id = 1").Scan(&habitPosition); err != nil {
+		t.Fatal(err)
+	}
+	if version != 4 || todoPosition != 0 || habitPosition != 0 {
+		t.Fatalf("migration version=%d todo_position=%d habit_position=%d", version, todoPosition, habitPosition)
+	}
+}
+
 func TestOlderVersionedDatabaseIsRejected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "old-version.db")
 	db, err := InitDB(path)

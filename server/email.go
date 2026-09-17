@@ -18,9 +18,9 @@ type EmailSender interface {
 }
 
 type resendSender struct {
-	apiKey string
-	from   string
-	client *http.Client
+	apiKey   string
+	from     string
+	client   *http.Client
 	appTitle string
 }
 
@@ -32,9 +32,9 @@ func newResendSender(cfg Config) EmailSender {
 		IdleConnTimeout:       30 * time.Second,
 	}
 	return &resendSender{
-		apiKey: cfg.ResendAPIKey,
-		from:   cfg.ResendFromEmail,
-		client: &http.Client{Transport: transport, Timeout: 15 * time.Second},
+		apiKey:   cfg.ResendAPIKey,
+		from:     cfg.ResendFromEmail,
+		client:   &http.Client{Transport: transport, Timeout: 15 * time.Second},
 		appTitle: cfg.AppTitle,
 	}
 }

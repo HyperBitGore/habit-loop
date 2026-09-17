@@ -215,8 +215,14 @@ Administrator routes additionally require the `admin` role.
 | `PUT` | `/api/profile` | Update username or email |
 | `PUT` | `/api/set_password` | Change the authenticated user's password |
 | `GET` | `/api/get_tasks?date=YYYY-MM-DD` | List todos for a date |
+| `PUT` | `/api/reorder` | Reorder habits or todos |
 | `PUT` | `/api/add_task` | Create a todo using task headers |
 | `PUT` | `/api/update_task` | Edit, complete, or defer a todo |
+| `PUT` | `/api/notes` | Save or delete a dated todo or habit note |
+| `GET` | `/api/get_note` | Load a dated note |
+| `GET` | `/api/todo_history` | List non-goal todos across dates |
+| `GET`/`PUT`/`PATCH` | `/api/goals` | List, create, and activate or pause goals |
+| `PUT` | `/api/save_metric` | Save a habit metric and its dated value |
 | `DELETE` | `/api/remove_task` | Delete a todo |
 | `GET` | `/api/get_habits` | List habits with schedules and history |
 | `PUT` | `/api/add_habit` | Create a habit |
@@ -230,6 +236,10 @@ Administrator routes additionally require the `admin` role.
 | `GET` | `/api/get_users` | Search and paginate users |
 | `PUT` | `/api/edit_user` | Change a username or role |
 | `DELETE` | `/api/delete_user` | Delete a user |
+
+`PUT /api/reorder` accepts `{ "type": "habits"|"todos", "date": "YYYY-MM-DD", "ids": [] }`.
+For habits, `date` is omitted. The IDs must contain every item in the user's
+list (or every todo on the selected date) exactly once.
 
 `GET /api/get_users` returns at most 100 users in:
 

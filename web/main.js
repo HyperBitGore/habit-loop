@@ -7,7 +7,10 @@ import {
     closeHabitDetail,
     deleteSelectedHabit,
     fetchHabits,
-    saveSelectedHabit
+    saveSelectedHabit,
+    saveSelectedHabitExtras,
+    saveHabitMetricValue,
+    setMetricMode
 } from "./habits.js";
 
 let currentTodoName = "";
@@ -63,6 +66,8 @@ const habitDetailCloseButton = document.querySelector("#habit-detail-close");
 const habitDetailForm = document.querySelector("#habit-detail-form");
 const habitDetailDeleteButton = document.querySelector("#habit-detail-delete");
 const habitDetailError = document.querySelector("#habit-detail-error");
+const habitMetricToggle = document.querySelector("#habit-metric-toggle");
+let metricEntry = null;
 const habitCalendarPreviousButton = document.querySelector("#habit-calendar-previous");
 const habitCalendarNextButton = document.querySelector("#habit-calendar-next");
 const habitScheduleMode = document.querySelector("#habit-schedule-mode");
@@ -110,6 +115,46 @@ habitDetailScheduleMode.addEventListener("change", () => {
         habitDetailIntervalFields,
         habitDetailWeekdayFields
     );
+});
+habitMetricToggle.addEventListener("click", () => {
+    const enabled = habitMetricToggle.getAttribute("aria-pressed") !== "true";
+    setMetricMode(enabled);
+    if (!enabled) {
+        document.querySelector("#habit-metric-name").value = "";
+        document.querySelector("#habit-metric-goal").value = "";
+    }
+});
+
+window.addEventListener("habit-metric-edit", (event) => {
+    metricEntry = event.detail;
+    document.querySelector("#metric-value-title").textContent = metricEntry.habit.metric_name;
+    document.querySelector("#metric-value-date").textContent = metricEntry.date;
+    document.querySelector("#metric-value-input").value = metricEntry.habit.metric_value;
+    document.querySelector("#metric-value-error").hidden = true;
+    document.querySelector("#metric-value-popup").hidden = false;
+    document.querySelector("#metric-value-input").focus();
+});
+document.querySelector("#metric-value-close").addEventListener("click", () => {
+    document.querySelector("#metric-value-popup").hidden = true;
+    metricEntry = null;
+});
+document.querySelector("#metric-value-save").addEventListener("click", async () => {
+    if (!metricEntry) return;
+    const error = document.querySelector("#metric-value-error");
+    error.hidden = true;
+    try {
+        await saveHabitMetricValue(
+            metricEntry.habit,
+            metricEntry.date,
+            Number(document.querySelector("#metric-value-input").value)
+        );
+        document.querySelector("#metric-value-popup").hidden = true;
+        await fetchHabits(metricEntry.date);
+        metricEntry = null;
+    } catch (saveError) {
+        error.textContent = saveError.message;
+        error.hidden = false;
+    }
 });
 
 settingsToggle.addEventListener("click", () => {
@@ -215,6 +260,7 @@ habitDetailForm.addEventListener("submit", async (event) => {
     const formData = new FormData(habitDetailForm);
     habitDetailError.hidden = true;
     try {
+        await saveSelectedHabitExtras(taskDateInput.value);
         await saveSelectedHabit(
             formData.get("name"),
             taskDateInput.value,

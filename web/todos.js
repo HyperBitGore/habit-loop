@@ -1,4 +1,4 @@
-import { apiFetch } from "./api.js";
+import { apiFetch, getNote, reorderItems, saveNote } from "./api.js";
 
 let todoArray = [];
 
@@ -21,6 +21,26 @@ function renderTodos (todos) {
     todoArray = todos;
     for (const todo of todos) {
         const listItem = document.createElement("li");
+        listItem.draggable = true;
+        listItem.dataset.id = String(todo.id);
+        listItem.addEventListener("dragover", (event) => event.preventDefault());
+        listItem.addEventListener("drop", async (event) => {
+            event.preventDefault();
+            const draggedID = event.dataTransfer.getData("text/plain");
+            const targetID = String(todo.id);
+            if (!draggedID || draggedID === targetID) {
+                return;
+            }
+            const from = todoArray.findIndex((item) => String(item.id) === draggedID);
+            const to = todoArray.findIndex((item) => String(item.id) === targetID);
+            const [moved] = todoArray.splice(from, 1);
+            todoArray.splice(to, 0, moved);
+            renderTodos(todoArray);
+            await saveTodoOrder(todo.date.slice(0, 10));
+        });
+        listItem.addEventListener("dragstart", (event) => {
+            event.dataTransfer.setData("text/plain", String(todo.id));
+        });
         const todoName = document.createElement("span");
         todoName.className = "task-name";
         todoName.textContent = todo.name;
@@ -55,21 +75,53 @@ function renderTodos (todos) {
 
         const todoActions = document.createElement("span");
         todoActions.className = "task-actions";
-        todoActions.append(completeButton, skipButton);
+        const moveUpButton = createMoveButton(todo, -1);
+        const moveDownButton = createMoveButton(todo, 1);
+        todoActions.append(moveUpButton, moveDownButton, completeButton, skipButton);
 
         listItem.addEventListener("click", () => openTodoDetail(todo));
         listItem.append(todoName, todoActions);
         todoList.appendChild(listItem);
     }
+
+    function createMoveButton (todo, direction) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "status-button reorder-button";
+        button.textContent = direction < 0 ? "↑" : "↓";
+        button.setAttribute("aria-label", `Move ${todo.name} ${direction < 0 ? "up" : "down"}`);
+        button.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            const index = todoArray.indexOf(todo);
+            const next = index + direction;
+            if (next < 0 || next >= todoArray.length) {
+                return;
+            }
+            [todoArray[index], todoArray[next]] = [todoArray[next], todoArray[index]];
+            renderTodos(todoArray);
+            await saveTodoOrder(todo.date.slice(0, 10));
+        });
+        return button;
+    }
+
+    async function saveTodoOrder (date) {
+        try {
+            await reorderItems("todos", todoArray.map((todo) => todo.id), date);
+        } catch (error) {
+            console.error("Failed to save todo order:", error);
+        }
+    }
 }
 
 let detailTodo = null;
 
-function openTodoDetail (todo) {
+async function openTodoDetail (todo) {
     detailTodo = todo;
     document.querySelector("#todo-detail-name").value = todo.name;
     document.querySelector("#todo-detail-date").textContent = formatServerDate(todo.date);
     document.querySelector("#todo-detail-complete").textContent = todo.complete ? "Yes" : "No";
+    document.querySelector("#todo-detail-note").value =
+        (await getNote("todo", todo.id, todo.date.slice(0, 10))).body || "";
     document.querySelector("#todo-detail-popup").hidden = false;
 }
 
@@ -89,6 +141,7 @@ export async function saveSelectedTodo (name) {
     }
     const todo = detailTodo;
     await editTodo(todo.id, name, todo.date, todo.complete);
+    await saveNote("todo", todo.id, todo.date.slice(0, 10), document.querySelector("#todo-detail-note").value);
     todoDetailClose();
 }
 

@@ -32,6 +32,59 @@ type Habit struct {
 	Interval     int         `json:"interval"`
 	DaysMode     bool        `json:"days_mode"`
 	StartDate    string      `json:"start_date"`
+	Position     int         `json:"-"`
+	MetricName   string      `json:"metric_name,omitempty"`
+	MetricGoal   float64     `json:"metric_goal"`
+	MetricValue  float64     `json:"metric_value"`
+}
+
+type reorderRequest struct {
+	Type string   `json:"type"`
+	Date string   `json:"date"`
+	IDs  []uint64 `json:"ids"`
+}
+
+func HandleReorder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var request reorderRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(request.IDs) == 0 {
+		writeAPIError(w, http.StatusBadRequest, "At least one item is required")
+		return
+	}
+	user := requestUser(w, r)
+	if user == nil {
+		return
+	}
+	var err error
+	switch request.Type {
+	case "habits":
+		err = appStore.ReorderHabits(r.Context(), user.ID, request.IDs)
+	case "todos":
+		if _, parseErr := time.Parse("2006-01-02", request.Date); parseErr != nil {
+			writeAPIError(w, http.StatusBadRequest, "Invalid task date")
+			return
+		}
+		err = appStore.ReorderTasks(r.Context(), user.ID, request.Date, request.IDs)
+	default:
+		writeAPIError(w, http.StatusBadRequest, "Invalid reorder type")
+		return
+	}
+	if err != nil {
+		if errors.Is(err, errReorderItems) {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "Unable to reorder items")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (days DaysOfWeek) anyEnabled() bool {
@@ -118,7 +171,7 @@ func HandleGetHabits(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
-	habits, err := appStore.ListHabits(r.Context(), user.ID)
+	habits, err := appStore.ListHabits(r.Context(), user.ID, r.URL.Query().Get("date"))
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "Unable to load habits")
 		return

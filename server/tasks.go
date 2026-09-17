@@ -16,6 +16,8 @@ type Task struct {
 	Date     time.Time `json:"date"`
 	Complete bool      `json:"complete"`
 	ID       uint64    `json:"id"`
+	Position int       `json:"-"`
+	Note     string    `json:"note,omitempty"`
 }
 
 func validateItemName(name string) (string, error) {
