@@ -23,6 +23,9 @@ type Config struct {
 	ResendFromEmail        string
 	TurnstileSecret        string
 	TurnstileHostnames     []string
+	AdSensePublisherID     string
+	AdSenseAdSlot          string
+	AdSenseTestPlacement   bool
 	SecureCookies          bool
 	TrustProxyHeaders      bool
 	TrustedProxies         []*net.IPNet
@@ -43,6 +46,9 @@ var allowedConfigKeys = map[string]struct{}{
 	"RESEND_FROM_EMAIL":        {},
 	"TURNSTILE_SECRET":         {},
 	"TURNSTILE_HOSTNAMES":      {},
+	"ADSENSE_PUBLISHER_ID":     {},
+	"ADSENSE_AD_SLOT":          {},
+	"ADSENSE_TEST_PLACEMENT":   {},
 	"SECURE_COOKIES":           {},
 	"TRUST_PROXY_HEADERS":      {},
 	"TRUSTED_PROXY_CIDRS":      {},
@@ -72,12 +78,27 @@ func LoadConfig(path string) (Config, error) {
 		ResendAPIKey:           strings.TrimSpace(configValue(values, "RESEND_API_KEY", "")),
 		ResendFromEmail:        strings.TrimSpace(configValue(values, "RESEND_FROM_EMAIL", "")),
 		TurnstileSecret:        strings.TrimSpace(configValue(values, "TURNSTILE_SECRET", "")),
+		AdSensePublisherID:     strings.TrimSpace(configValue(values, "ADSENSE_PUBLISHER_ID", "")),
+		AdSenseAdSlot:          strings.TrimSpace(configValue(values, "ADSENSE_AD_SLOT", "")),
 		BootstrapAdminName:     strings.TrimSpace(configValue(values, "BOOTSTRAP_ADMIN_NAME", "")),
 		BootstrapAdminEmail:    normalizeEmail(configValue(values, "BOOTSTRAP_ADMIN_EMAIL", "")),
 		BootstrapAdminPassword: configValue(values, "BOOTSTRAP_ADMIN_PASSWORD", ""),
 	}
+	cfg.AdSenseTestPlacement, err = configBool(values, "ADSENSE_TEST_PLACEMENT", false)
+	if err != nil {
+		return Config{}, err
+	}
 	if err := validateEmail(cfg.ContactEmail); err != nil {
 		return Config{}, fmt.Errorf("invalid contact email: %w", err)
+	}
+	if cfg.AdSensePublisherID != "" {
+		if !strings.HasPrefix(cfg.AdSensePublisherID, "ca-pub-") ||
+			strings.Trim(cfg.AdSensePublisherID[len("ca-pub-"):], "0123456789") != "" {
+			return Config{}, fmt.Errorf("ADSENSE_PUBLISHER_ID must be a ca-pub- publisher ID")
+		}
+		if cfg.AdSenseAdSlot != "" && strings.Trim(cfg.AdSenseAdSlot, "0123456789") != "" {
+			return Config{}, fmt.Errorf("ADSENSE_AD_SLOT must contain only digits")
+		}
 	}
 
 	hostnameValue := strings.TrimSpace(configValue(values, "TURNSTILE_HOSTNAMES", ""))

@@ -10,6 +10,9 @@ APP_BASE_URL=http://localhost:8081
 # Cloudflare Turnstile
 TURNSTILE_SECRET=replace-with-widget-secret
 TURNSTILE_HOSTNAMES=localhost,127.0.0.1
+ADSENSE_PUBLISHER_ID=
+ADSENSE_AD_SLOT=
+ADSENSE_TEST_PLACEMENT=false
 
 # Email (required in production)
 RESEND_API_KEY=

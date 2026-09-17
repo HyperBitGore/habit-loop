@@ -612,6 +612,27 @@ select {
   padding-bottom: 3rem;
 }
 
+.ad-slot {
+  display: block;
+  width: min(100%, 42rem);
+  min-height: 90px;
+  margin: 0 auto 2rem;
+  overflow: hidden;
+  text-align: center;
+}
+
+.ad-slot-test {
+  display: grid;
+  min-height: 90px;
+  place-items: center;
+  border: 1px dashed var(--line-dark);
+  color: var(--ink-soft);
+  background: var(--surface-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .goal-list,
 .history-list {
   display: grid;

@@ -105,7 +105,7 @@ func securityHeadersMiddleware(cfg Config, next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; frame-src https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://pagead2.googlesyndication.com; style-src 'self'; img-src 'self' data: https://*.googlesyndication.com https://*.doubleclick.net; frame-src https://challenges.cloudflare.com https://googleads.g.doubleclick.net; connect-src 'self' https://challenges.cloudflare.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 		if cfg.Environment == "production" {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}

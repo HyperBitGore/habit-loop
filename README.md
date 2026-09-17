@@ -86,6 +86,9 @@ Real `server.cfg` files are ignored by Git because they contain secrets.
 | `RESEND_FROM_EMAIL` | Sender address; required in production |
 | `TURNSTILE_SECRET` | Secret for the widget site key in `web/turnstile.js` |
 | `TURNSTILE_HOSTNAMES` | Comma-separated allowed token hostnames |
+| `ADSENSE_PUBLISHER_ID` | Optional Google AdSense publisher ID; leave empty to disable ads |
+| `ADSENSE_AD_SLOT` | Optional responsive display ad slot ID; leave empty to disable ad units |
+| `ADSENSE_TEST_PLACEMENT` | Draw blank ad-sized placement boxes without loading Google ads |
 | `SECURE_COOKIES` | Whether authentication cookies require HTTPS |
 | `TRUST_PROXY_HEADERS` | Whether headers from trusted reverse proxies are used |
 | `TRUSTED_PROXY_CIDRS` | Comma-separated trusted proxy IP addresses or CIDRs |
@@ -95,6 +98,13 @@ Real `server.cfg` files are ignored by Git because they contain secrets.
 
 The bootstrap administrator settings must either all be present or all be
 empty.
+
+When both `ADSENSE_PUBLISHER_ID` and `ADSENSE_AD_SLOT` are configured, the
+site displays compact responsive ad units on the application pages and serves
+the required `/ads.txt` entry. Every ad request is marked non-personalized
+(`data-npa="1"`), and advertising is not loaded when the browser exposes
+`navigator.globalPrivacyControl` or sends `Sec-GPC: 1`. Configure Google's
+required consent-management solution before serving ads in regulated regions.
 
 ## Cloudflare Turnstile
 

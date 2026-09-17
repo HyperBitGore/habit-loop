@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,10 +12,6 @@ import (
 	"syscall"
 	"time"
 )
-
-// TODO
-//	- gpc
-//	- adsense
 
 var (
 	appConfig            Config
@@ -170,10 +167,26 @@ func buildHandler(cfg Config) http.Handler {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, map[string]string{
-			"title":         cfg.AppTitle,
-			"contact_email": cfg.ContactEmail,
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"title":                  cfg.AppTitle,
+			"contact_email":          cfg.ContactEmail,
+			"adsense_publisher_id":   cfg.AdSensePublisherID,
+			"adsense_ad_slot":        cfg.AdSenseAdSlot,
+			"adsense_test_placement": cfg.AdSenseTestPlacement,
+			"gpc_opt_out":            r.Header.Get("Sec-GPC") == "1",
 		})
+	})
+	mux.HandleFunc("/ads.txt", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		if cfg.AdSensePublisherID == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprintf(w, "google.com, %s, DIRECT, f08c47fec0942fa0\n", cfg.AdSensePublisherID)
 	})
 
 	mux.Handle("/api/login", rateLimitMiddleware(loginLimiter, nil, http.HandlerFunc(HandleLogin)))
