@@ -12,8 +12,12 @@ schedules, account management, and a searchable administration interface.
 - Habits scheduled by an interval of days or selected weekdays.
 - Habit history calendar showing completed, skipped, scheduled, and untargeted
   dates.
+- Habit summaries and optional numeric metrics with dated values.
+- Goals with ordered items that can be linked to todos.
+- Dated notes for todos and habits.
+- Import from an existing uHabit database.
 - Email-verified accounts, password reset, profile editing, and secure
-  server-side sessions.
+  server-side sessions, including self-service account deletion.
 - Cloudflare Turnstile protection for login, registration, and password-reset
   requests.
 - Administrator user management with search and cursor-based infinite
@@ -210,7 +214,8 @@ when editing one.
 ## API overview
 
 Authentication is cookie-based. Except for the public account endpoints,
-health checks, and static files, API routes require an authenticated session.
+application configuration, ad manifest, health checks, and static files, API
+routes require an authenticated session.
 Administrator routes additionally require the `admin` role.
 
 | Method | Endpoint | Purpose |
@@ -221,9 +226,12 @@ Administrator routes additionally require the `admin` role.
 | `POST` | `/api/verify-email` | Consume an email-verification token |
 | `POST` | `/api/request-password-reset` | Send a password-reset email |
 | `POST` | `/api/reset-password` | Consume a password-reset token |
+| `GET` | `/api/app-config` | Return public title, contact, and ad configuration |
+| `GET` | `/ads.txt` | Return the AdSense seller declaration when ads are enabled |
 | `GET` | `/api/current_user` | Return the authenticated user |
 | `PUT` | `/api/profile` | Update username or email |
 | `PUT` | `/api/set_password` | Change the authenticated user's password |
+| `DELETE` | `/api/delete-account` | Delete the authenticated user's account |
 | `GET` | `/api/get_tasks?date=YYYY-MM-DD` | List todos for a date |
 | `PUT` | `/api/reorder` | Reorder habits or todos |
 | `PUT` | `/api/add_task` | Create a todo using task headers |
@@ -232,9 +240,11 @@ Administrator routes additionally require the `admin` role.
 | `GET` | `/api/get_note` | Load a dated note |
 | `GET` | `/api/todo_history` | List non-goal todos across dates |
 | `GET`/`PUT`/`PATCH` | `/api/goals` | List, create, and activate or pause goals |
+| `POST` | `/api/import/uhabit` | Import habits from a uHabit database upload |
 | `PUT` | `/api/save_metric` | Save a habit metric and its dated value |
 | `DELETE` | `/api/remove_task` | Delete a todo |
 | `GET` | `/api/get_habits` | List habits with schedules and history |
+| `GET` | `/api/habit_summary` | Return habit completion and skip summaries |
 | `PUT` | `/api/add_habit` | Create a habit |
 | `PUT` | `/api/edit_habit` | Edit a habit and its schedule |
 | `DELETE` | `/api/delete_habit` | Delete a habit |
@@ -267,15 +277,18 @@ over usernames and email addresses.
 ## Database
 
 All users, sessions, todos, habits, completions, skips, weekday schedules,
-verification tokens, and password-reset tokens are stored in SQLite.
+goals, habit metrics, notes, verification tokens, and password-reset tokens are
+stored in SQLite.
 
 Schema creation runs transactionally. A fresh database starts at schema
-version 3 with foreign keys, cascading deletion, normalized unique emails,
-token expiration indexes, unique habit-date constraints, and habit scheduling.
+version 5 with foreign keys, cascading deletion, normalized unique emails,
+token expiration indexes, unique habit-date constraints, habit scheduling,
+goals, habit metrics, and dated notes.
 
-Historical upgrade migrations have been removed. Existing databases must
-already be at schema version 3. Upgrade older versioned databases with a prior
-build before starting this version. Unversioned databases are not converted.
+Versioned databases at schema versions 3 and 4 are upgraded automatically to
+version 5. Older or unversioned databases must be migrated or recreated with a
+prior build before starting this version; unversioned application schemas are
+not converted.
 
 ### Backup and restore
 
