@@ -88,6 +88,47 @@ func TestHabitHandlersPersistAndReturnSchedule(t *testing.T) {
 	}
 }
 
+func TestHabitEditWithoutCompletionsPreservesHistory(t *testing.T) {
+	setupTestApplication(t)
+	userID := insertTestUser(t, "alice", "alice@example.com", "user")
+
+	addRequest := habitRequestForUser(t, http.MethodPut, "/api/add_habit", userID)
+	addRequest.Header.Set("X-Habit-Name", "Imported habit")
+	addRequest.Header.Set("X-Habit-Completions", `["2026-09-10T00:00:00Z"]`)
+	addResponse := httptest.NewRecorder()
+	HandleAddHabit(addResponse, addRequest)
+	if addResponse.Code != http.StatusCreated {
+		t.Fatalf("add status = %d body=%s", addResponse.Code, addResponse.Body.String())
+	}
+
+	habits, err := appStore.ListHabits(context.Background(), userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(habits) != 1 || len(habits[0].Completions) != 1 {
+		t.Fatalf("unexpected imported habit: %+v", habits)
+	}
+
+	editRequest := habitRequestForUser(t, http.MethodPut, "/api/edit_habit", userID)
+	editRequest.Header.Set("X-Habit-ID", strconv.FormatUint(habits[0].ID, 10))
+	editRequest.Header.Set("X-Habit-Name", "Renamed imported habit")
+	editResponse := httptest.NewRecorder()
+	HandleEditHabit(editResponse, editRequest)
+	if editResponse.Code != http.StatusNoContent {
+		t.Fatalf("edit status = %d body=%s", editResponse.Code, editResponse.Body.String())
+	}
+
+	habits, err = appStore.ListHabits(context.Background(), userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(habits) != 1 || habits[0].Name != "Renamed imported habit" ||
+		len(habits[0].Completions) != 1 ||
+		habits[0].Completions[0].Format("2006-01-02") != "2026-09-10" {
+		t.Fatalf("edit did not preserve completions: %+v", habits)
+	}
+}
+
 func TestHabitDaysModeRequiresAnEnabledWeekday(t *testing.T) {
 	setupTestApplication(t)
 	userID := insertTestUser(t, "alice", "alice@example.com", "user")

@@ -257,10 +257,13 @@ func HandleEditHabit(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	completions, err := parseHabitCompletions(r.Header.Get("X-Habit-Completions"))
-	if err != nil {
-		writeAPIError(w, http.StatusBadRequest, "Invalid habit completions")
-		return
+	var completions []time.Time
+	if value := r.Header.Get("X-Habit-Completions"); value != "" {
+		completions, err = parseHabitCompletions(value)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, "Invalid habit completions")
+			return
+		}
 	}
 	interval, daysMode, daysOfWeek, err := parseHabitSchedule(r)
 	if err != nil {

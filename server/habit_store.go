@@ -337,19 +337,21 @@ func (s *Store) EditHabit(
 		return errHabitNotFound
 	}
 
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM completions
-		WHERE habit_id = ?
-	`, habitID); err != nil {
-		return err
-	}
-	for _, completion := range completions {
+	if completions != nil {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO completions (habit_id, date)
-			VALUES (?, ?)
-			ON CONFLICT(habit_id, date) DO NOTHING
-		`, habitID, completion.Format("2006-01-02")); err != nil {
+			DELETE FROM completions
+			WHERE habit_id = ?
+		`, habitID); err != nil {
 			return err
+		}
+		for _, completion := range completions {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO completions (habit_id, date)
+				VALUES (?, ?)
+				ON CONFLICT(habit_id, date) DO NOTHING
+			`, habitID, completion.Format("2006-01-02")); err != nil {
+				return err
+			}
 		}
 	}
 

@@ -470,11 +470,11 @@ export async function saveSelectedHabit (name, date, schedule) {
         headers: {
             "X-Habit-ID": String(detailHabit.id),
             "X-Habit-Name": name,
-            "X-Habit-Completions": JSON.stringify(
+            ...(
                 !detailHabit.metric_name &&
                 document.querySelector("#habit-metric-name").value.trim()
-                    ? []
-                    : detailHabit.completions ?? []
+                    ? {"X-Habit-Completions": "[]"}
+                    : {}
             ),
             ...scheduleHeaders(schedule)
         }
