@@ -102,9 +102,9 @@ empty.
 When both `ADSENSE_PUBLISHER_ID` and `ADSENSE_AD_SLOT` are configured, the
 site displays compact responsive ad units on the application pages and serves
 the required `/ads.txt` entry. Every ad request is marked non-personalized
-(`data-npa="1"`), and advertising is not loaded when the browser exposes
-`navigator.globalPrivacyControl` or sends `Sec-GPC: 1`. Configure Google's
-required consent-management solution before serving ads in regulated regions.
+(`data-npa="1"`). Google AdSense handles browser privacy signals such as
+Global Privacy Control. Configure Google's required consent-management solution
+before serving ads in regulated regions.
 
 ## Cloudflare Turnstile
 

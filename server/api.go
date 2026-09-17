@@ -173,7 +173,6 @@ func buildHandler(cfg Config) http.Handler {
 			"adsense_publisher_id":   cfg.AdSensePublisherID,
 			"adsense_ad_slot":        cfg.AdSenseAdSlot,
 			"adsense_test_placement": cfg.AdSenseTestPlacement,
-			"gpc_opt_out":            r.Header.Get("Sec-GPC") == "1",
 		})
 	})
 	mux.HandleFunc("/ads.txt", func(w http.ResponseWriter, r *http.Request) {
