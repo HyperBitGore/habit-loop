@@ -39,6 +39,25 @@
           <button type="submit">Update password</button>
         </form>
 
+        <h2>Stay logged in</h2>
+        <form id="session-form">
+          <p class="auth-intro">
+            Choose how long a login lasts on this account. Applies to new
+            logins; existing sessions keep their original expiry.
+          </p>
+          <label for="session-length">Session length</label>
+          <select id="session-length" name="sessionLength" required>
+            <option value="60">1 hour</option>
+            <option value="1440">1 day</option>
+            <option value="10080">7 days</option>
+            <option value="43200">30 days</option>
+            <option value="129600">90 days</option>
+            <option value="525600">365 days</option>
+          </select>
+          <p id="session-message" class="auth-error" role="status" hidden></p>
+          <button type="submit">Save session length</button>
+        </form>
+
         <h2>Import data</h2>
         <form id="import-form">
           <p class="auth-intro">

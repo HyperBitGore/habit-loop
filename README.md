@@ -23,6 +23,8 @@ schedules, account management, and a searchable administration interface.
 - Administrator user management with search and cursor-based infinite
   scrolling in pages of 100 users.
 - SQLite persistence with transactional schema initialization.
+- Public landing page and habit-building guide articles, with `robots.txt`
+  and `sitemap.xml` served for search engines.
 
 ## Requirements
 
@@ -93,6 +95,8 @@ Real `server.cfg` files are ignored by Git because they contain secrets.
 | `ADSENSE_PUBLISHER_ID` | Optional Google AdSense publisher ID; leave empty to disable ads |
 | `ADSENSE_AD_SLOT` | Optional responsive display ad slot ID; leave empty to disable ad units |
 | `ADSENSE_TEST_PLACEMENT` | Draw blank ad-sized placement boxes without loading Google ads |
+| `ADSENSE_AUTHED_PAGES` | Show ad units on logged-in pages; keep `false` until AdSense approval |
+| `ADSENSE_NON_PERSONALIZED` | Force non-personalized ads everywhere; defaults to `true` |
 | `PUBLIC_REGISTRATION` | Whether visitors can create accounts; defaults to `true` |
 | `SECURE_COOKIES` | Whether authentication cookies require HTTPS |
 | `TRUST_PROXY_HEADERS` | Whether headers from trusted reverse proxies are used |
@@ -105,11 +109,31 @@ The bootstrap administrator settings must either all be present or all be
 empty.
 
 When both `ADSENSE_PUBLISHER_ID` and `ADSENSE_AD_SLOT` are configured, the
-site displays compact responsive ad units on the application pages and serves
-the required `/ads.txt` entry. Every ad request is marked non-personalized
-(`data-npa="1"`). Google AdSense handles browser privacy signals such as
-Global Privacy Control. Configure Google's required consent-management solution
-before serving ads in regulated regions.
+site displays compact responsive ad units on the public landing and guide
+pages and serves the required `/ads.txt` entry. Ad units on logged-in pages
+stay disabled until `ADSENSE_AUTHED_PAGES=true`, since the AdSense review
+crawler cannot see pages behind authentication. While
+`ADSENSE_NON_PERSONALIZED=true` (the default), every ad request is marked
+non-personalized (`data-npa="1"`). Google AdSense handles browser privacy
+signals such as Global Privacy Control.
+
+### AdSense approval checklist
+
+1. Deploy the site, then verify the domain in Google Search Console and
+   submit `https://<your-domain>/sitemap.xml`.
+2. Wait until the public pages (landing, guides, privacy, terms) are indexed
+   before requesting an AdSense review; unindexed sites are rejected as
+   "low value content".
+3. In AdSense, add the site under **Sites** and verify ownership with the
+   ads.txt method; this server already serves the required `/ads.txt` entry.
+4. In AdSense **Privacy & messaging**, create and publish the GDPR consent
+   message. Google requires a certified consent-management platform to serve
+   any ads (including non-personalized ones) to EEA and UK visitors; the
+   message is delivered automatically with the AdSense script and the
+   Content-Security-Policy already permits it.
+5. After approval, optionally set `ADSENSE_AUTHED_PAGES=true` to enable ad
+   units on logged-in pages, and set `ADSENSE_NON_PERSONALIZED=false` to let
+   consent signals allow personalized ads.
 
 ## Cloudflare Turnstile
 
@@ -229,8 +253,11 @@ Administrator routes additionally require the `admin` role.
 | `POST` | `/api/reset-password` | Consume a password-reset token |
 | `GET` | `/api/app-config` | Return public title, contact, ad, and registration configuration |
 | `GET` | `/ads.txt` | Return the AdSense seller declaration when ads are enabled |
+| `GET` | `/robots.txt` | Return crawler rules and the sitemap location |
+| `GET` | `/sitemap.xml` | Return a sitemap of public pages built from `APP_BASE_URL` |
 | `GET` | `/api/current_user` | Return the authenticated user |
 | `PUT` | `/api/profile` | Update username or email |
+| `PUT` | `/api/session_length` | Set the user's session length in minutes (30–525600; default 43200, i.e. 30 days) |
 | `PUT` | `/api/set_password` | Change the authenticated user's password |
 | `DELETE` | `/api/delete-account` | Delete the authenticated user's account |
 | `GET` | `/api/get_tasks?date=YYYY-MM-DD` | List todos for a date |

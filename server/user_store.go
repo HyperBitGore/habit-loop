@@ -44,6 +44,7 @@ func scanUser(row *sql.Row) (*User, error) {
 		&user.Password,
 		&user.Role,
 		&user.EmailVerified,
+		&user.SessionMinutes,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -57,7 +58,7 @@ func scanUser(row *sql.Row) (*User, error) {
 func (s *Store) GetUserByName(ctx context.Context, name string) (*User, error) {
 	return scanUser(s.db.QueryRowContext(ctx, `
 		SELECT id, name, COALESCE(email, ''), COALESCE(pending_email, ''),
-		       password_hash, role, email_verified
+		       password_hash, role, email_verified, session_minutes
 		FROM users
 		WHERE name = ?
 	`, strings.TrimSpace(name)))
@@ -66,10 +67,16 @@ func (s *Store) GetUserByName(ctx context.Context, name string) (*User, error) {
 func (s *Store) GetUserByID(ctx context.Context, id int) (*User, error) {
 	return scanUser(s.db.QueryRowContext(ctx, `
 		SELECT id, name, COALESCE(email, ''), COALESCE(pending_email, ''),
-		       password_hash, role, email_verified
+		       password_hash, role, email_verified, session_minutes
 		FROM users
 		WHERE id = ?
 	`, id))
+}
+
+func (s *Store) SetSessionMinutes(ctx context.Context, userID int, minutes int) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE users SET session_minutes = ? WHERE id = ?", minutes, userID)
+	return err
 }
 
 func (s *Store) BootstrapAdmin(ctx context.Context, cfg Config) error {

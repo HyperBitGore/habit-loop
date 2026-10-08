@@ -47,6 +47,26 @@ function closeRegistrationPopup () {
     document.querySelector("#registration-error").hidden = true;
 }
 
+function showVerifyEmailPopup (email) {
+    const popup = document.querySelector("#verify-email-popup");
+    if (!popup) {
+        return;
+    }
+    document.querySelector("#verify-email-address").textContent = email;
+    popup.hidden = false;
+    const okButton = document.querySelector("#verify-email-ok");
+    okButton.focus();
+    const close = () => {
+        popup.hidden = true;
+    };
+    okButton.addEventListener("click", close, { once: true });
+    popup.addEventListener("click", (event) => {
+        if (event.target === popup) {
+            close();
+        }
+    });
+}
+
 if (openRegistrationButton) {
     openRegistrationButton.addEventListener("click", () => {
         registrationPopup.hidden = false;
@@ -102,6 +122,7 @@ if (registrationForm) {
             loginError.textContent = "Account created. Check your email to verify it before logging in.";
             loginError.classList.add("is-success");
             loginError.hidden = false;
+            showVerifyEmailPopup(formData.get("email"));
         } catch (error) {
             resetTurnstile(registrationTurnstile);
             errorMessage.textContent = error.message;
@@ -111,6 +132,15 @@ if (registrationForm) {
 }
 
 if (loginForm) {
+    // Skip the login form when a valid session cookie is already present.
+    fetch("/api/current_user")
+        .then((response) => {
+            if (response.ok) {
+                window.location.assign("./todo.html");
+            }
+        })
+        .catch(() => {});
+
     loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
@@ -248,6 +278,19 @@ export async function updateProfile (name, email, currentPassword) {
         throw new Error(await responseError(response, "Unable to update profile."));
     }
     return response.json();
+}
+
+export async function setSessionLength (minutes) {
+    const response = await fetch("/api/session_length", {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ minutes })
+    });
+    if (!response.ok) {
+        throw new Error(await responseError(response, "Unable to update the session length."));
+    }
 }
 
 export async function importUHabitDatabase (file) {

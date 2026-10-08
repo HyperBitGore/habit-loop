@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -21,6 +23,21 @@ import (
 //	- Move frontend to React
 //	- add better admin controls
 //		- see users total todos/habits
+//	- Calendar view
+//	- Calendar list select year and month seperate
+// EXTEND
+//	- Repeatable todos?
+//		- Roll habits into this?? (no I think having seperate habit tracker important)
+//	- Todos can stay in your day if you don't complete them, so just roll over to next day??
+//	- List views can be minimized
+//	- Reorderable lists
+//	- Zoom habit tracking out further
+//	- Habits can have subtasks
+//	- App version for clients
+//	- Todos can sticky to habits and only appear when that habit appears
+//	- Multi tiered todos
+//		- multiple completeables inside a todo
+//		- maybe remove goals??
 
 var (
 	appConfig            Config
@@ -177,12 +194,14 @@ func buildHandler(cfg Config) http.Handler {
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"title":                  cfg.AppTitle,
-			"contact_email":          cfg.ContactEmail,
-			"adsense_publisher_id":   cfg.AdSensePublisherID,
-			"adsense_ad_slot":        cfg.AdSenseAdSlot,
-			"adsense_test_placement": cfg.AdSenseTestPlacement,
-			"public_registration":    cfg.PublicRegistration,
+			"title":                    cfg.AppTitle,
+			"contact_email":            cfg.ContactEmail,
+			"adsense_publisher_id":     cfg.AdSensePublisherID,
+			"adsense_ad_slot":          cfg.AdSenseAdSlot,
+			"adsense_test_placement":   cfg.AdSenseTestPlacement,
+			"adsense_authed_pages":     cfg.AdSenseAuthedPages,
+			"adsense_non_personalized": cfg.AdSenseNonPersonalized,
+			"public_registration":      cfg.PublicRegistration,
 		})
 	})
 	mux.HandleFunc("/ads.txt", func(w http.ResponseWriter, r *http.Request) {
@@ -196,6 +215,53 @@ func buildHandler(cfg Config) http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprintf(w, "google.com, %s, DIRECT, f08c47fec0942fa0\n", cfg.AdSensePublisherID)
+	})
+	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprint(w, "User-agent: *\nDisallow: /api/\n")
+		if cfg.AppBaseURL != nil {
+			fmt.Fprintf(w, "Sitemap: %s/sitemap.xml\n", strings.TrimRight(cfg.AppBaseURL.String(), "/"))
+		}
+	})
+	mux.HandleFunc("/sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			return
+		}
+		if cfg.AppBaseURL == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		base := strings.TrimRight(cfg.AppBaseURL.String(), "/")
+		publicPages := []string{
+			"/",
+			"/login.html",
+			"/guides.html",
+			"/guide-starting-habits.html",
+			"/guide-streaks-and-skips.html",
+			"/guide-daily-planning.html",
+			"/privacy.html",
+			"/terms.html",
+		}
+		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+		fmt.Fprint(w, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+		fmt.Fprint(w, "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n")
+		for _, page := range publicPages {
+			file := page
+			if file == "/" {
+				file = "/index.html"
+			}
+			lastmod := ""
+			if info, err := os.Stat(filepath.Join(cfg.WebRoot, filepath.FromSlash(file))); err == nil {
+				lastmod = fmt.Sprintf("<lastmod>%s</lastmod>", info.ModTime().UTC().Format("2006-01-02"))
+			}
+			fmt.Fprintf(w, "  <url><loc>%s%s</loc>%s</url>\n", base, page, lastmod)
+		}
+		fmt.Fprint(w, "</urlset>\n")
 	})
 
 	mux.Handle("/api/login", rateLimitMiddleware(loginLimiter, nil, http.HandlerFunc(HandleLogin)))
@@ -218,6 +284,7 @@ func buildHandler(cfg Config) http.Handler {
 	mux.Handle("/api/set_password", authMiddleware(http.HandlerFunc(HandleSetPassword)))
 	mux.Handle("/api/current_user", authMiddleware(http.HandlerFunc(HandleCurrentUser)))
 	mux.Handle("/api/profile", authMiddleware(http.HandlerFunc(HandleUpdateProfile)))
+	mux.Handle("/api/session_length", authMiddleware(http.HandlerFunc(HandleSetSessionLength)))
 	mux.Handle("/api/import/uhabit", authMiddleware(http.HandlerFunc(HandleUHabitDBUpload)))
 	mux.Handle("/api/export/uhabit", authMiddleware(http.HandlerFunc(HandleUHabitDBExport)))
 	mux.Handle("/api/export/csv", authMiddleware(http.HandlerFunc(HandleHabitCSVExport)))

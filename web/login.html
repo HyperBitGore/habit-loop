@@ -6,7 +6,6 @@
     <title>Log in | Habit Loop</title>
     <link rel="stylesheet" href="./styles.css" />
     <script type="module" src="./site-config.js"></script>
-    <script type="module" src="./ads.js"></script>
     <script id="turnstile-script" src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
     <script type="module" src="./users.js"></script>
   </head>
@@ -17,8 +16,8 @@
         <h1>Welcome back</h1>
         <p class="auth-intro">Log in to manage your habits and todos.</p>
 
-        <label for="name">Name</label>
-        <input id="name" name="name" type="name" autocomplete="name" required />
+        <label for="name">Username</label>
+        <input id="name" name="name" type="text" autocomplete="username" required />
 
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required />
@@ -35,13 +34,11 @@
         </p>
       </form>
 
-      <div class="ad-slot" data-ad-slot aria-label="Advertisement"></div>
-
       <div id="registration-popup" class="todo-popup-overlay" hidden>
         <section class="todo-popup" role="dialog" aria-modal="true" aria-labelledby="registration-title">
           <h2 id="registration-title">Create an account</h2>
           <form id="registration-form">
-            <label for="registration-name">Name</label>
+            <label for="registration-name">Username</label>
             <input id="registration-name" name="name" type="text" autocomplete="username" required />
 
             <label for="registration-email">Email</label>
@@ -60,6 +57,22 @@
               <button type="button" id="close-registration-button" class="auth-secondary">Cancel</button>
             </div>
           </form>
+        </section>
+      </div>
+      <div id="verify-email-popup" class="todo-popup-overlay" hidden>
+        <section class="todo-popup" role="alertdialog" aria-modal="true" aria-labelledby="verify-email-title" aria-describedby="verify-email-text">
+          <h2 id="verify-email-title">Verify your email to log in</h2>
+          <p id="verify-email-text">
+            Your account was created, but you can't log in yet. We sent a
+            verification link to <strong id="verify-email-address"></strong>.
+            Open that email and click the link, then come back here to log in.
+          </p>
+          <p class="auth-intro">
+            Don't see it? Check your spam or junk folder.
+          </p>
+          <div class="popup-actions">
+            <button type="button" id="verify-email-ok">Got it</button>
+          </div>
         </section>
       </div>
     </main>

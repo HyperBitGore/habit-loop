@@ -30,7 +30,7 @@ func (s *Store) userIDFromToken(ctx context.Context, token string) (int, bool, e
 	return userID, true, nil
 }
 
-func (s *Store) CreateSessionToken(ctx context.Context, userID int) (string, error) {
+func (s *Store) CreateSessionToken(ctx context.Context, userID int, minutes int) (string, error) {
 	rawToken := make([]byte, 32)
 	if _, err := rand.Read(rawToken); err != nil {
 		return "", err
@@ -39,7 +39,7 @@ func (s *Store) CreateSessionToken(ctx context.Context, userID int) (string, err
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO sessions (token_hash, user_id, expires_at)
 		VALUES (?, ?, ?)
-	`, hashSessionToken(token), userID, timestamp(time.Now().Add(sessionTimeMinutes*time.Minute)))
+	`, hashSessionToken(token), userID, timestamp(time.Now().Add(time.Duration(minutes)*time.Minute)))
 	if err != nil {
 		return "", err
 	}

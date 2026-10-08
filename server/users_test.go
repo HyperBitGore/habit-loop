@@ -280,7 +280,7 @@ func TestPasswordChangeInvalidatesSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := appStore.CreateSessionToken(context.Background(), userID); err != nil {
+	if _, err := appStore.CreateSessionToken(context.Background(), userID, defaultSessionMinutes); err != nil {
 		t.Fatal(err)
 	}
 	if err := appStore.SetUserPassword(context.Background(), user, "password123", "newpassword123"); err != nil {

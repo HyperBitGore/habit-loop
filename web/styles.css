@@ -493,6 +493,27 @@ select {
   font-weight: 650;
 }
 
+.habit-streak {
+  margin-left: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.section-count {
+  margin-left: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.task-list li:hover .habit-streak {
+  text-decoration: none;
+  display: inline-block;
+}
+
 .metric-status {
   display: inline-flex;
   min-width: 4.5rem;

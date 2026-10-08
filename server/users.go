@@ -19,18 +19,31 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const sessionTimeMinutes = 30
+// Session length bounds in minutes; the default is 30 days.
+const (
+	defaultSessionMinutes = 30 * 24 * 60
+	minSessionMinutes     = 30
+	maxSessionMinutes     = 365 * 24 * 60
+)
 
 var dummyPasswordHash, _ = bcrypt.GenerateFromPassword([]byte("invalid-password"), bcrypt.DefaultCost)
 
 type User struct {
-	ID            int
-	Name          string
-	Email         string
-	PendingEmail  string
-	Password      []byte
-	Role          string
-	EmailVerified bool
+	ID             int
+	Name           string
+	Email          string
+	PendingEmail   string
+	Password       []byte
+	Role           string
+	EmailVerified  bool
+	SessionMinutes int
+}
+
+func (user *User) sessionMinutes() int {
+	if user.SessionMinutes < minSessionMinutes || user.SessionMinutes > maxSessionMinutes {
+		return defaultSessionMinutes
+	}
+	return user.SessionMinutes
 }
 
 func normalizeEmail(email string) string {
@@ -240,12 +253,12 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusUnauthorized, "Invalid login credentials")
 		return
 	}
-	token, err := appStore.CreateSessionToken(r.Context(), user.ID)
+	token, err := appStore.CreateSessionToken(r.Context(), user.ID, user.sessionMinutes())
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "Unable to log in")
 		return
 	}
-	http.SetCookie(w, sessionCookie(token, sessionTimeMinutes*60))
+	http.SetCookie(w, sessionCookie(token, user.sessionMinutes()*60))
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -550,12 +563,42 @@ func HandleCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"name":           user.Name,
-		"email":          user.Email,
-		"pending_email":  user.PendingEmail,
-		"role":           user.Role,
-		"email_verified": user.EmailVerified,
+		"name":            user.Name,
+		"email":           user.Email,
+		"pending_email":   user.PendingEmail,
+		"role":            user.Role,
+		"email_verified":  user.EmailVerified,
+		"session_minutes": user.sessionMinutes(),
 	})
+}
+
+func HandleSetSessionLength(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeAPIError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var request struct {
+		Minutes int `json:"minutes"`
+	}
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if request.Minutes < minSessionMinutes || request.Minutes > maxSessionMinutes {
+		writeAPIError(w, http.StatusBadRequest, fmt.Sprintf(
+			"Session length must be between %d and %d minutes", minSessionMinutes, maxSessionMinutes,
+		))
+		return
+	}
+	user := requestUser(w, r)
+	if user == nil {
+		return
+	}
+	if err := appStore.SetSessionMinutes(r.Context(), user.ID, request.Minutes); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "Unable to save session length")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func HandleUpdateProfile(w http.ResponseWriter, r *http.Request) {

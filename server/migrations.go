@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-const currentSchemaVersion = 6
+const currentSchemaVersion = 7
 
 func runMigrations(db *sql.DB) error {
 	hasMigrationsTable, err := tableExists(db, "schema_migrations")
@@ -31,17 +31,6 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("database schema version %d is newer than supported version %d", version, currentSchemaVersion)
 	}
 	if version < currentSchemaVersion {
-		if version == 5 {
-			return migrateToV6(db)
-		}
-		if version == 4 {
-			return migrateToV5(db)
-		}
-
-		if version == 3 {
-			return migrateToV4(db)
-		}
-
 		if version == 0 {
 			hasExistingSchema, err := applicationSchemaExists(db)
 			if err != nil {
@@ -52,13 +41,51 @@ func runMigrations(db *sql.DB) error {
 			}
 			return createCurrentSchema(db, false)
 		}
-		return fmt.Errorf(
-			"database schema version %d is no longer supported; migrate it to version %d before using this build",
-			version,
-			currentSchemaVersion,
-		)
+		if version < 3 {
+			return fmt.Errorf(
+				"database schema version %d is no longer supported; migrate it to version %d before using this build",
+				version,
+				currentSchemaVersion,
+			)
+		}
+		if version == 3 {
+			if err := migrateToV4(db); err != nil {
+				return err
+			}
+			version = 4
+		}
+		if version == 4 {
+			if err := migrateToV5(db); err != nil {
+				return err
+			}
+			version = 5
+		}
+		if version == 5 {
+			if err := migrateToV6(db); err != nil {
+				return err
+			}
+			version = 6
+		}
+		if version == 6 {
+			return migrateToV7(db)
+		}
 	}
 	return nil
+}
+
+func migrateToV7(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`ALTER TABLE users ADD COLUMN session_minutes INTEGER NOT NULL DEFAULT 43200`); err != nil {
+		return fmt.Errorf("add user session minutes: %w", err)
+	}
+	if _, err := tx.Exec("INSERT INTO schema_migrations(version) VALUES (7)"); err != nil {
+		return fmt.Errorf("record schema version: %w", err)
+	}
+	return tx.Commit()
 }
 
 func migrateToV6(db *sql.DB) error {
@@ -271,6 +298,7 @@ func createSchema(tx *sql.Tx) error {
 			password_hash TEXT NOT NULL,
 			role TEXT NOT NULL CHECK (role IN ('user', 'admin')),
 			email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+			session_minutes INTEGER NOT NULL DEFAULT 43200,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE goals (

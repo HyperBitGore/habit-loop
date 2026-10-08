@@ -71,6 +71,7 @@ func TestVersionThreeDatabaseAddsPositions(t *testing.T) {
 	_, err = db.Exec(`
 		CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY);
 		INSERT INTO schema_migrations(version) VALUES (3);
+		CREATE TABLE users (id INTEGER PRIMARY KEY);
 		CREATE TABLE todos (id INTEGER PRIMARY KEY, user_id INTEGER, name TEXT, date TEXT, complete BOOLEAN);
 		CREATE TABLE habits (id INTEGER PRIMARY KEY, user_id INTEGER, name TEXT);
 		INSERT INTO todos(id, user_id, name, date) VALUES (2, 1, 'second', '2026-09-16'), (1, 1, 'first', '2026-09-16');
@@ -99,7 +100,7 @@ func TestVersionThreeDatabaseAddsPositions(t *testing.T) {
 	if err := db.QueryRow("SELECT position FROM habits WHERE id = 1").Scan(&habitPosition); err != nil {
 		t.Fatal(err)
 	}
-	if version != 4 || todoPosition != 0 || habitPosition != 0 {
+	if version != currentSchemaVersion || todoPosition != 0 || habitPosition != 0 {
 		t.Fatalf("migration version=%d todo_position=%d habit_position=%d", version, todoPosition, habitPosition)
 	}
 }

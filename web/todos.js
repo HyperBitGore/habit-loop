@@ -19,6 +19,11 @@ function renderTodos (todos) {
     const todoList = document.querySelector("#todo-list");
     todoList.replaceChildren();
     todoArray = todos;
+    const todosCount = document.querySelector("#todos-count");
+    if (todosCount) {
+        const completed = todos.filter((todo) => todo.complete).length;
+        todosCount.textContent = todos.length > 0 ? `${completed}/${todos.length}` : "";
+    }
     for (const todo of todos) {
         const listItem = document.createElement("li");
         listItem.draggable = true;

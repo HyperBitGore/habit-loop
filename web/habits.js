@@ -61,6 +61,33 @@ function formatDays (days) {
     return `${days} ${days === 1 ? "day" : "days"}`;
 }
 
+const streakLookbackLimit = 3650;
+
+function calculateScheduleStreak (habit, date) {
+    const completedDates = new Set(
+        (habit.completions ?? []).map((completion) => completion.slice(0, 10))
+    );
+    const skippedDates = new Set(
+        (habit.skips ?? []).map((skip) => skip.slice(0, 10))
+    );
+    let streak = 0;
+    let current = date;
+    for (let step = 0; step < streakLookbackLimit; step += 1) {
+        if (habit.start_date && current < habit.start_date) {
+            break;
+        }
+        if (shouldDisplayHabit(habit, current)) {
+            if (completedDates.has(current)) {
+                streak += 1;
+            } else if (!skippedDates.has(current) && current !== date) {
+                break;
+            }
+        }
+        current = shiftDate(current, -1);
+    }
+    return streak;
+}
+
 export function shouldDisplayHabit (habit, date) {
     if (habit.days_mode) {
         const weekday = [
@@ -188,6 +215,16 @@ function renderHabits (habits, date) {
     const habitList = document.querySelector("#habit-list");
     habitList.replaceChildren();
     habitArray = habits;
+    const habitsCount = document.querySelector("#habits-count");
+    if (habitsCount) {
+        const scheduled = habits.filter((habit) =>
+            habit.status !== "inactive" && shouldDisplayHabit(habit, date)
+        );
+        const completed = scheduled.filter((habit) =>
+            (habit.completions ?? []).some((completion) => completion.slice(0, 10) === date)
+        ).length;
+        habitsCount.textContent = scheduled.length > 0 ? `${completed}/${scheduled.length}` : "";
+    }
     for (const habit of habits.filter((habit) =>
         (showInactiveHabits || habit.status !== "inactive") &&
         (habit.status === "inactive" || shouldDisplayHabit(habit, date))
@@ -221,6 +258,19 @@ function renderHabits (habits, date) {
         const habitName = document.createElement("span");
         habitName.className = "task-name";
         habitName.textContent = habit.name;
+
+        const streak = calculateScheduleStreak(habit, date);
+        if (streak > 0) {
+            const streakBadge = document.createElement("span");
+            streakBadge.className = "habit-streak";
+            streakBadge.textContent = `🔥${streak}`;
+            streakBadge.setAttribute(
+                "aria-label",
+                `${streak}-day streak for ${habit.name}`
+            );
+            streakBadge.title = `${formatDays(streak)} streak`;
+            habitName.append(streakBadge);
+        }
 
         const completions = habit.completions ?? [];
         const skips = habit.skips ?? [];

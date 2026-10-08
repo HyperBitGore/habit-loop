@@ -7,7 +7,15 @@ async function loadAds () {
         throw new Error(`Advertising configuration returned HTTP ${response.status}.`);
     }
     const config = await response.json();
-    const containers = document.querySelectorAll("[data-ad-slot]");
+    let containers = [...document.querySelectorAll("[data-ad-slot]")];
+    if (!config.adsense_authed_pages) {
+        for (const container of containers) {
+            if (container.dataset.adAuthed !== undefined) {
+                container.remove();
+            }
+        }
+        containers = containers.filter((container) => container.isConnected);
+    }
     if (containers.length === 0) return;
 
     if (config.adsense_test_placement) {
@@ -25,7 +33,13 @@ async function loadAds () {
         return;
     }
 
-    window.google_non_personalized_ads = 1;
+    // When a certified CMP (e.g. the AdSense GDPR message) is active, consent
+    // signals govern personalization; this flag additionally forces
+    // non-personalized ads everywhere when enabled.
+    const nonPersonalized = config.adsense_non_personalized !== false;
+    if (nonPersonalized) {
+        window.google_non_personalized_ads = 1;
+    }
     const scriptURL = new URL("https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js");
     scriptURL.searchParams.set("client", config.adsense_publisher_id);
     let script = document.querySelector(`script[src="${scriptURL}"]`);
@@ -58,7 +72,9 @@ async function loadAds () {
             ad.dataset.adSlot = config.adsense_ad_slot;
             ad.dataset.adFormat = "auto";
             ad.dataset.fullWidthResponsive = "true";
-            ad.dataset.npa = "1";
+            if (nonPersonalized) {
+                ad.dataset.npa = "1";
+            }
             container.replaceChildren(ad);
             (window.adsbygoogle = window.adsbygoogle || []).push({});
         } catch (error) {

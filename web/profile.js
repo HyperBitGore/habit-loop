@@ -6,6 +6,7 @@ import {
     importUHabitDatabase,
     logout,
     setPassword,
+    setSessionLength,
     updateProfile
 } from "./users.js";
 
@@ -16,6 +17,9 @@ const pendingEmail = document.querySelector("#pending-email");
 const profileMessage = document.querySelector("#profile-message");
 const passwordForm = document.querySelector("#password-form");
 const passwordMessage = document.querySelector("#password-message");
+const sessionForm = document.querySelector("#session-form");
+const sessionLength = document.querySelector("#session-length");
+const sessionMessage = document.querySelector("#session-message");
 const importForm = document.querySelector("#import-form");
 const importMessage = document.querySelector("#import-message");
 const deleteAccountForm = document.querySelector("#delete-account-form");
@@ -34,6 +38,19 @@ getCurrentUser()
         if (user.pending_email) {
             pendingEmail.textContent = `Pending verification: ${user.pending_email}`;
             pendingEmail.hidden = false;
+        }
+        const minutes = Number(user.session_minutes);
+        if (Number.isFinite(minutes) && minutes > 0) {
+            const preset = [...sessionLength.options].some(
+                (option) => Number(option.value) === minutes
+            );
+            if (!preset) {
+                const custom = document.createElement("option");
+                custom.value = String(minutes);
+                custom.textContent = `Custom (${minutes} minutes)`;
+                sessionLength.append(custom);
+            }
+            sessionLength.value = String(minutes);
         }
     })
     .catch((error) => {
@@ -74,6 +91,18 @@ passwordForm.addEventListener("submit", async (event) => {
         window.location.assign("./login.html");
     } catch (error) {
         showMessage(passwordMessage, error.message);
+    }
+});
+
+sessionForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    sessionMessage.hidden = true;
+    const minutes = Number(sessionLength.value);
+    try {
+        await setSessionLength(minutes);
+        showMessage(sessionMessage, "Session length saved. It applies to your next login.", true);
+    } catch (error) {
+        showMessage(sessionMessage, error.message);
     }
 });
 

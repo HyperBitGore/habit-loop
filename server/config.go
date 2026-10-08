@@ -26,6 +26,8 @@ type Config struct {
 	AdSensePublisherID     string
 	AdSenseAdSlot          string
 	AdSenseTestPlacement   bool
+	AdSenseAuthedPages     bool
+	AdSenseNonPersonalized bool
 	PublicRegistration     bool
 	PublicRegistrationSet  bool
 	SecureCookies          bool
@@ -51,6 +53,8 @@ var allowedConfigKeys = map[string]struct{}{
 	"ADSENSE_PUBLISHER_ID":     {},
 	"ADSENSE_AD_SLOT":          {},
 	"ADSENSE_TEST_PLACEMENT":   {},
+	"ADSENSE_AUTHED_PAGES":     {},
+	"ADSENSE_NON_PERSONALIZED": {},
 	"PUBLIC_REGISTRATION":      {},
 	"SECURE_COOKIES":           {},
 	"TRUST_PROXY_HEADERS":      {},
@@ -88,6 +92,14 @@ func LoadConfig(path string) (Config, error) {
 		BootstrapAdminPassword: configValue(values, "BOOTSTRAP_ADMIN_PASSWORD", ""),
 	}
 	cfg.AdSenseTestPlacement, err = configBool(values, "ADSENSE_TEST_PLACEMENT", false)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.AdSenseAuthedPages, err = configBool(values, "ADSENSE_AUTHED_PAGES", false)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.AdSenseNonPersonalized, err = configBool(values, "ADSENSE_NON_PERSONALIZED", true)
 	if err != nil {
 		return Config{}, err
 	}

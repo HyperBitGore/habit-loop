@@ -14,6 +14,12 @@ TURNSTILE_HOSTNAMES=localhost,127.0.0.1
 ADSENSE_PUBLISHER_ID=
 ADSENSE_AD_SLOT=
 ADSENSE_TEST_PLACEMENT=false
+# Keep false until AdSense approves the site; logged-in pages are invisible
+# to the AdSense review crawler.
+ADSENSE_AUTHED_PAGES=false
+# Set false only once a certified CMP (e.g. the AdSense GDPR message) is
+# enabled, so consent signals can allow personalized ads.
+ADSENSE_NON_PERSONALIZED=true
 
 # Email (required in production)
 RESEND_API_KEY=
